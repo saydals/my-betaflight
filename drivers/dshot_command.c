@@ -349,6 +349,10 @@ FAST_CODE_NOINLINE bool dshotCommandOutputIsEnabled(uint8_t motorCount)
 // 아밍 준비 완료 시 ESC 내장 멜로디 재생 (BEACON1=낮음 ~ BEACON5=높음)
 void dshotPlayArmReadyMelody(void)
 {
+    if (!isMotorProtocolDshot() || !dshotStreamingCommandsAreEnabled()) {
+        return;
+    }
+
     // 모스부호 "RDY" (.-. / -.. / -.--) 아밍 준비 알림
     // 점(·) = 150ms / 선(-) = 450ms / 글자간격 = holdUs에 200ms 추가
     #define DOT  { DSHOT_CMD_BEACON4, 1, 100000 }
@@ -370,20 +374,18 @@ void dshotPlayArmReadyMelody(void)
     #undef DASH
     #undef DOTG
 
-    if (!isMotorProtocolDshot()) {
-        return;
-    }
-
     for (unsigned n = 0; n < sizeof(notes) / sizeof(notes[0]); n++) {
         if (dshotCommandQueueFull()) {
             break;
         }
+
         dshotCommandControl_t *cc = addCommand();
         if (cc) {
             cc->repeats               = notes[n].repeats;
             cc->delayAfterCommandUs   = notes[n].holdUs;
-            cc->state                 = DSHOT_COMMAND_STATE_STARTDELAY;
+            cc->state                 = DSHOT_COMMAND_STATE_STARTDELAY;   // 강제 STARTDELAY
             cc->nextCommandCycleDelay = dshotCommandCyclesFromTime(DSHOT_INITIAL_DELAY_US);
+
             for (unsigned i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
                 cc->command[i] = notes[n].cmd;
             }
