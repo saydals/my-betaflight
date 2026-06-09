@@ -361,11 +361,6 @@ void updateArmingStatus(void)
         }
 #endif
 
-#ifdef USE_DSHOT_TELEMETRY
-        // Bypass telemetry/RPM active check to allow arming with RPM errors
-        unsetArmingDisabled(ARMING_DISABLED_DSHOT_TELEM);
-#endif
-
 #ifdef USE_DSHOT_BITBANG
         if (isDshotBitbangActive(&motorConfig()->dev) && dshotBitbangGetStatus() != DSHOT_BITBANG_STATUS_OK) {
             setArmingDisabled(ARMING_DISABLED_DSHOT_BITBANG);
@@ -1146,19 +1141,23 @@ static FAST_CODE_NOINLINE void subTaskPidSubprocesses(timeUs_t currentTimeUs)
         startTime = micros();
     }
 
+
 #ifdef USE_DSHOT
-    // 매 루프마다 아밍 준비 완료 전환 감지 → ESC 비콘 멜로디 재생
-    {
-        static bool prevArmingReady = false;
-        static bool melodyPlayed = false;
-        const bool  nowArmingReady  = !isArmingDisabled() && !ARMING_FLAG(ARMED);
-        if (nowArmingReady && !prevArmingReady && !melodyPlayed) {
+{
+    static bool prevArmingReady = false;
+    static bool melodyPlayed = false;
+    const bool nowArmingReady = !isArmingDisabled() && !ARMING_FLAG(ARMED);
+    if (nowArmingReady && !prevArmingReady && !melodyPlayed) {
+        if (dshotStreamingCommandsAreEnabled()) {  // ← 전송 가능 상태인지 먼저 확인
             dshotPlayArmReadyMelody();
-            melodyPlayed = true;
+            melodyPlayed = true;   // ← 성공한 경우에만 true
         }
-        prevArmingReady = nowArmingReady;
+        // dshotStreamingCommandsAreEnabled()가 false면 다음 루프에서 재시도
     }
+    prevArmingReady = nowArmingReady;
+}
 #endif
+
 
 #if defined(USE_GPS) || defined(USE_MAG)
     if (sensors(SENSOR_GPS) || sensors(SENSOR_MAG)) {
