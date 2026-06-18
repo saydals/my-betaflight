@@ -1,0 +1,246 @@
+57a58,74
+> #include "io/failsafe.h"
+> 
+> // ============================================================
+> // Bird Flap: CLI parameter storage (registered in config.c)
+> // ============================================================
+> float birdFlapMaxFreq       = 2.0f;
+> float birdFlapMinFreq       = 0.2f;
+> float birdFlapServoSpeed    = 100.0f;
+> float birdFlapMaxAmplitude  = 500.0f;
+> float birdFlapUpRatio       = 0.40f;
+> float birdFlapSoftStartMs   = 800.0f;
+> float birdFlapSoftStopMs    = 600.0f;
+> float birdFlapFreqTauMs     = 100.0f;
+> float birdFlapSlewRate      = 4000.0f;
+> float birdFlapRandomness    = 0.10f;
+> float birdFlapRandomTauMs   = 100.0f;
+> 
+411a429,651
+> // ============================================================
+> // Bird Flap: PRNG (xorshift32, period 2^32-1)
+> // ============================================================
+> static uint32_t bfXorshiftState = 1;
+> 
+> static uint32_t bfXorshift32(void)
+> {
+>     uint32_t x = bfXorshiftState;
+>     x ^= x << 13;
+>     x ^= x >> 17;
+>     x ^= x << 5;
+>     return (bfXorshiftState = x);
+> }
+> 
+> // ============================================================
+> // Bird Flap: warpPhase — asymmetric stroke mapping
+> // phi 0~1 uniformly increasing -> warped 0~1 with Up/Down ratio
+> // ============================================================
+> static float bfWarpPhase(float phi, float upRatio)
+> {
+>     float safeUp = constrainf(upRatio, 0.1f, 0.9f);
+>     float warped;
+>     if (phi < safeUp) {
+>         warped = phi * (0.5f / safeUp);
+>     } else {
+>         warped = 0.5f + (phi - safeUp) * (0.5f / (1.0f - safeUp));
+>     }
+>     if (warped >= 1.0f) warped -= 1.0f;
+>     if (warped < 0.0f)  warped += 1.0f;
+>     return warped;
+> }
+> 
+> // ============================================================
+> // Bird Flap: State variables
+> // ============================================================
+> static birdFlapState_e birdFlapState       = BIRD_FLAP_STATE_OFF;
+> static float  birdFlapPhi                  = 0.0f;
+> static float  birdFlapFreqFiltered         = 0.0f;
+> static float  birdFlapAmplitudeRamp        = 0.0f;
+> static int16_t birdFlapLastOutput          = 0;
+> static uint32_t birdFlapLastTime           = 0;
+> static bool   birdFlapEverStarted          = false;
+> static bool   birdFlapLastArmed            = false;
+> 
+> static float  bfRandomTarget               = 1.0f;
+> static float  bfRandomFiltered             = 1.0f;
+> static uint32_t bfRandomLastTime           = 0;
+> 
+> // ============================================================
+> // Bird Flap: getBirdFlapInput()
+> // Returns [-500:+500] range value for INPUT_BIRD_FLAP
+> // Called once per servoMixer() invocation
+> // ============================================================
+> static int16_t getBirdFlapInput(void)
+> {
+>     uint32_t currentTime = micros();
+> 
+>     // [Priority 1] Arm state: must run before any early return
+>     bool currentArmed = ARMING_FLAG(ARMED);
+>     if (birdFlapLastArmed && !currentArmed) {
+>         // Disarmed: reset phase-init flag so next arm begins from Downstroke
+>         birdFlapEverStarted   = false;
+>         birdFlapState         = BIRD_FLAP_STATE_OFF;
+>         birdFlapAmplitudeRamp = 0.0f;
+>         birdFlapLastOutput    = 0;
+>         birdFlapLastTime      = currentTime;
+>     }
+>     birdFlapLastArmed = currentArmed;
+> 
+>     // [Priority 2] First-call initialisation
+>     if (birdFlapLastTime == 0) {
+>         birdFlapLastTime     = currentTime;
+>         bfXorshiftState      = currentTime | 1U;
+>         birdFlapFreqFiltered = birdFlapMinFreq;
+>         return 0;
+>     }
+> 
+>     // [Priority 3] Failsafe Stage 1 — freeze output, advance timestamp only
+> #ifdef USE_FAILSAFE
+>     if (failsafePhase() == FAILSAFE_PHASE_1) {
+>         birdFlapLastTime = currentTime;
+>         return birdFlapLastOutput;
+>     }
+> #endif
+> 
+>     float dt = (currentTime - birdFlapLastTime) * 1e-6f;
+>     dt = constrainf(dt, 0.0005f, 0.010f);
+>     birdFlapLastTime = currentTime;
+> 
+>     // --- Determine active state and strength from BOXUSER1 channel value ---
+>     // The channel assigned to BOXUSER1 and its configured range (startStep/endStep)
+>     // serve dual purpose: ON/OFF gating AND continuous strength 0.0~1.0.
+>     bool isActive = IS_RC_MODE_ACTIVE(BOXUSER1);
+>     float strength = 0.0f;
+> 
+>     if (isActive) {
+>         for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) {
+>             const modeActivationCondition_t *mac = modeActivationConditions(i);
+>             if (mac->modeId == BOXUSER1 && IS_RANGE_USABLE(&mac->range)) {
+>                 // PWM = 900 + step * 25 (Betaflight step encoding)
+>                 int16_t rangeMin = 900 + (int16_t)mac->range.startStep * 25;
+>                 int16_t rangeMax = 900 + (int16_t)mac->range.endStep   * 25;
+>                 int16_t rcVal    = (int16_t)constrain(
+>                     rcData[mac->auxChannelIndex + NON_AUX_CHANNEL_COUNT],
+>                     CHANNEL_RANGE_MIN, CHANNEL_RANGE_MAX);
+>                 if (rangeMax > rangeMin) {
+>                     strength = (float)(rcVal - rangeMin) / (float)(rangeMax - rangeMin);
+>                     strength = constrainf(strength, 0.0f, 1.0f);
+>                 }
+>                 break;
+>             }
+>         }
+>     }
+> 
+>     // --- Failsafe Stage 2: force STOPPING ---
+> #ifdef USE_FAILSAFE
+>     if (failsafePhase() >= FAILSAFE_PHASE_2) {
+>         if (birdFlapState == BIRD_FLAP_STATE_ACTIVE ||
+>             birdFlapState == BIRD_FLAP_STATE_STARTING) {
+>             birdFlapState = BIRD_FLAP_STATE_STOPPING;
+>         }
+>     }
+> #endif
+> 
+>     // --- State machine ---
+>     switch (birdFlapState) {
+>     case BIRD_FLAP_STATE_OFF:
+>         if (isActive) {
+>             birdFlapState         = BIRD_FLAP_STATE_STARTING;
+>             birdFlapAmplitudeRamp = 0.0f;
+>             if (!birdFlapEverStarted) {
+>                 birdFlapPhi         = 0.0f;  // First activation: begin from Downstroke
+>                 birdFlapEverStarted = true;
+>             }
+>             // Subsequent activations: Phase Preserve (phi not reset)
+>         }
+>         break;
+> 
+>     case BIRD_FLAP_STATE_STARTING:
+>         if (!isActive) {
+>             birdFlapState = BIRD_FLAP_STATE_STOPPING;
+>         } else if (birdFlapAmplitudeRamp >= 1.0f) {
+>             birdFlapState = BIRD_FLAP_STATE_ACTIVE;
+>         }
+>         break;
+> 
+>     case BIRD_FLAP_STATE_ACTIVE:
+>         if (!isActive) {
+>             birdFlapState = BIRD_FLAP_STATE_STOPPING;
+>         }
+>         break;
+> 
+>     case BIRD_FLAP_STATE_STOPPING:
+>         if (birdFlapAmplitudeRamp <= 0.0f) {
+>             birdFlapState      = BIRD_FLAP_STATE_OFF;
+>             birdFlapLastOutput = 0;
+>             return 0;
+>         }
+>         if (isActive) {
+>             birdFlapState = BIRD_FLAP_STATE_STARTING;  // Reactivate during stop
+>         }
+>         break;
+>     }
+> 
+>     if (birdFlapState == BIRD_FLAP_STATE_OFF) {
+>         return 0;
+>     }
+> 
+>     // --- Random frequency modulator (Sample & Hold 200ms, LPF smoothed) ---
+>     if (currentTime - bfRandomLastTime > 200000U) {
+>         float r = (float)(bfXorshift32() >> 8) / (float)(1 << 24);
+>         bfRandomTarget   = 1.0f + (r * 2.0f * birdFlapRandomness - birdFlapRandomness);
+>         bfRandomLastTime = currentTime;
+>     }
+>     {
+>         float rTau   = birdFlapRandomTauMs * 1e-3f;
+>         float rAlpha = dt / (rTau + dt);
+>         bfRandomFiltered += (bfRandomTarget - bfRandomFiltered) * rAlpha;
+>     }
+> 
+>     // --- Frequency: strength-based target, LPF, random modulation ---
+>     float desiredFreq = birdFlapMinFreq + strength * (birdFlapMaxFreq - birdFlapMinFreq);
+>     desiredFreq = constrainf(desiredFreq * bfRandomFiltered,
+>                              birdFlapMinFreq, birdFlapMaxFreq);
+>     {
+>         float fTau   = birdFlapFreqTauMs * 1e-3f;
+>         float fAlpha = constrainf(dt / (fTau + dt), 0.001f, 1.0f);
+>         birdFlapFreqFiltered += (desiredFreq - birdFlapFreqFiltered) * fAlpha;
+>     }
+> 
+>     // --- Amplitude ramp: Soft Start / Soft Stop ---
+>     if (birdFlapState == BIRD_FLAP_STATE_STARTING) {
+>         birdFlapAmplitudeRamp = constrainf(
+>             birdFlapAmplitudeRamp + dt / (birdFlapSoftStartMs * 1e-3f), 0.0f, 1.0f);
+>     } else if (birdFlapState == BIRD_FLAP_STATE_STOPPING) {
+>         birdFlapAmplitudeRamp = constrainf(
+>             birdFlapAmplitudeRamp - dt / (birdFlapSoftStopMs * 1e-3f), 0.0f, 1.0f);
+>     }
+> 
+>     // --- Phase update ---
+>     birdFlapPhi += birdFlapFreqFiltered * dt;
+>     if (birdFlapPhi >= 1.0f) birdFlapPhi -= 1.0f;
+> 
+>     // --- Physical amplitude limit: maxAmp = servoSpeed / freq ---
+>     float safeFreq       = MAX(birdFlapFreqFiltered, 0.1f);
+>     float physMaxAmp     = birdFlapServoSpeed / safeFreq;
+>     physMaxAmp           = constrainf(physMaxAmp, 0.0f, birdFlapMaxAmplitude);
+>     float amplitude      = MIN(strength * birdFlapMaxAmplitude, physMaxAmp)
+>                            * birdFlapAmplitudeRamp;
+> 
+>     // --- Asymmetric sine via warpPhase ---
+>     float sineVal = sin_approx(2.0f * M_PIf * bfWarpPhase(birdFlapPhi, birdFlapUpRatio));
+>     float rawOut  = amplitude * sineVal;
+> 
+>     // --- Slew Rate Limiter ---
+>     float maxDelta   = birdFlapSlewRate * dt;
+>     float delta      = constrainf(rawOut - (float)birdFlapLastOutput, -maxDelta, maxDelta);
+>     int16_t finalOut = (int16_t)lrintf((float)birdFlapLastOutput + delta);
+>     birdFlapLastOutput = finalOut;
+> 
+>     return finalOut;
+> }
+> 
+452a693,695
+> 
+>     // Bird Flap: inject biomimetic wing flap signal (id=14)
+>     input[INPUT_BIRD_FLAP]   = getBirdFlapInput();

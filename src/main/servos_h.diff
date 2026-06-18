@@ -1,0 +1,169 @@
+22a23
+> #include "common/time.h"
+24,25d24
+< #include "drivers/io_types.h"
+< #include "drivers/pwm_output.h"
+27,32c26,28
+< #define PWM_SERVO_MIN   500       // minimum servo PWM pulse width which we can set from cli
+< #define PWM_SERVO_MAX   2500      // maximum servo PWM pulse width which we can set from cli
+< 
+< #define DEFAULT_SERVO_MIN 1000
+< #define DEFAULT_SERVO_MIDDLE 1500
+< #define DEFAULT_SERVO_MAX 2000
+---
+> #define MAX_SERVO_SPEED UINT8_MAX
+> #define SERVO_OUTPUT_MAX 2500
+> #define SERVO_OUTPUT_MIN 500
+34,35c30
+< // These must be consecutive, see 'reversedSources'
+< enum {
+---
+> typedef enum {
+49a45
+>     INPUT_BIRD_FLAP,        // id=14: Bird Flap biomimetic wing control
+51c47
+< };
+---
+> } inputSource_e;
+53c49
+< // target servo channels
+---
+> // These must be in the same order as the mixerMode_e enum in mixer.h
+55,59d50
+<     SERVO_FLAPPERON_1 = 0,
+<     SERVO_FLAPPERON_2 = 1,
+<     SERVO_ELEVATOR = 2,
+<     SERVO_RUDDER = 3,
+<     SERVO_FLAPS = 4,
+62,79c53,54
+<     SERVO_THROTTLE = 7, // for internal combustion (IC) planes
+< 
+<     SERVO_BICOPTER_LEFT = 4,
+<     SERVO_BICOPTER_RIGHT = 5,
+< 
+<     SERVO_DUALCOPTER_LEFT = 4,
+<     SERVO_DUALCOPTER_RIGHT = 5,
+< 
+<     SERVO_SINGLECOPTER_1 = 3,
+<     SERVO_SINGLECOPTER_2 = 4,
+<     SERVO_SINGLECOPTER_3 = 5,
+<     SERVO_SINGLECOPTER_4 = 6,
+< 
+<     SERVO_HELI_LEFT = 0,
+<     SERVO_HELI_RIGHT = 1,
+<     SERVO_HELI_TOP = 2,
+<     SERVO_HELI_RUD = 3
+< 
+---
+>     SERVO_FLAPPERON_1 = 3,
+>     SERVO_FLAPPERON_2 = 4,
+82,92c57,58
+< #define SERVO_PLANE_INDEX_MIN SERVO_FLAPPERON_1
+< #define SERVO_PLANE_INDEX_MAX SERVO_THROTTLE
+< 
+< #define SERVO_DUALCOPTER_INDEX_MIN SERVO_DUALCOPTER_LEFT
+< #define SERVO_DUALCOPTER_INDEX_MAX SERVO_DUALCOPTER_RIGHT
+< 
+< #define SERVO_SINGLECOPTER_INDEX_MIN SERVO_SINGLECOPTER_1
+< #define SERVO_SINGLECOPTER_INDEX_MAX SERVO_SINGLECOPTER_4
+< 
+< #define SERVO_FLAPPERONS_MIN SERVO_FLAPPERON_1
+< #define SERVO_FLAPPERONS_MAX SERVO_FLAPPERON_2
+---
+> #define SERVO_PLANE_INDEX_MIN SERVO_PLANE_TAIL_ELEVATOR
+> #define SERVO_PLANE_INDEX_MAX SERVO_PLANE_FLAPERON_2
+94a61,68
+> #define MAX_SERVO_SPEED UINT8_MAX
+> #define MAX_SERVO_BOXES 3
+> 
+> #define SERVO_BYPASS_AUTH 2
+> #define DEFAULT_SERVO_MIN 1000
+> #define DEFAULT_SERVO_MIDDLE 1500
+> #define DEFAULT_SERVO_MAX 2000
+> #define DEFAULT_SERVO_HP_FILTER_CUTOFF_HZ 0
+99c73
+<     int8_t rate;                            // range [-125;+125] ; can be used to adjust a rate 0-125% and a direction
+---
+>     int8_t rate;                            // range [-125;+125] ; can be used to adjust the rule contribution
+106,115c80
+< PG_DECLARE_ARRAY(servoMixer_t, MAX_SERVO_RULES, customServoMixers);
+< 
+< #define MAX_SERVO_SPEED UINT8_MAX
+< #define MAX_SERVO_BOXES 3
+< 
+< // Custom mixer configuration
+< typedef struct mixerRules_s {
+<     uint8_t servoRuleCount;
+<     const servoMixer_t *rule;
+< } mixerRules_t;
+---
+> #define MAX_SERVO_RULES (2 * MAX_SUPPORTED_SERVOS)
+117c82
+< extern const mixerRules_t servoMixers[];
+---
+> PG_DECLARE_ARRAY(servoMixer_t, MAX_SERVO_RULES, customServoMixers);
+120,126c85,93
+<     uint32_t reversedSources;               // the direction of servo movement for each input source of the servo mixer, bit set=inverted
+<     int16_t min;                            // servo min
+<     int16_t max;                            // servo max
+<     int16_t middle;                         // servo middle
+<     int8_t rate;                            // range [-125;+125] ; can be used to adjust a rate 0-125% and a direction
+<     int8_t forwardFromChannel;              // RX channel index, 0 based.  See CHANNEL_FORWARDING_DISABLED
+< } servoParam_t;
+---
+>     uint16_t min;                           // servo min
+>     uint16_t max;                           // servo max
+>     uint16_t middle;                        // servo middle
+>     int8_t rate;                            // range [-125;+125] ; can be used to adjust the orientation or the total throw of the servo
+>     uint8_t forwardFromChannel;             // RX channel index, 0 based. See CHANNEL_FORWARDING_DISABLED
+>     uint8_t reversedSources;               // the direction of servo movement for each input source of the servo mixer, 1=reversed
+> } servoParam_t ;
+> 
+> #define CHANNEL_FORWARDING_DISABLED (uint8_t)0xFF
+131c98,101
+<     servoDevConfig_t dev;
+---
+>     uint8_t dev;
+>     uint16_t servoCenterPulse;              // This is the value for servos when they should be in the middle.
+>     uint16_t servoHighPulse;
+>     uint16_t servoLowPulse;
+133d102
+<     uint8_t tri_unarmed_servo;              // send tail servo correction pulses even when unarmed
+134a104
+>     uint8_t tri_unarmed_servo;             // send tail servo correction pulses even when unarmed
+139,141c109,114
+< typedef struct servoProfile_s {
+<     servoParam_t servoConf[MAX_SUPPORTED_SERVOS];
+< } servoProfile_t;
+---
+> typedef struct mixerRules_s {
+>     uint8_t servoRuleCount;
+>     const servoMixer_t *rule;
+> } mixerRules_t;
+> 
+> extern const mixerRules_t servoMixers[];
+143c116,123
+< extern int16_t servo[MAX_SUPPORTED_SERVOS];
+---
+> typedef enum {
+>     BIRD_FLAP_STATE_OFF = 0,
+>     BIRD_FLAP_STATE_STARTING,
+>     BIRD_FLAP_STATE_ACTIVE,
+>     BIRD_FLAP_STATE_STOPPING
+> } birdFlapState_e;
+> 
+> int16_t servo[MAX_SUPPORTED_SERVOS];
+146a127,128
+> void servoMixer(void);
+> void servosInit(void);
+149,156c131
+< int servoDirection(int servoIndex, int fromChannel);
+< void servosInit(void);
+< void servosFilterInit(void);
+< void servoMixer(void);
+< // tricopter specific
+< void servosTricopterInit(void);
+< void servosTricopterMixer(void);
+< bool servosTricopterIsEnabledServoUnarmed(void);
+---
+> int servoDirection(int servoIndex, int inputSource);

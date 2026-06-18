@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦅 Bird Flap 시뮬레이터</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Noto Sans KR', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .container { display: flex; height: 100vh; width: 100vw; }
+
+        /* LEFT PANEL */
+        .left-panel {
+            width: 35%;
+            min-width: 340px;
+            padding: 20px 18px;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border-right: 2px solid rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffd700;
+            letter-spacing: 2px;
+            text-align: center;
+            text-shadow: 0 2px 10px rgba(255,215,0,0.3);
+        }
+
+        .panel-sub {
+            text-align: center;
+            font-size: 12px;
+            color: #8899bb;
+            margin-bottom: 4px;
+        }
+
+        .param-group {
+            background: rgba(255,255,255,0.06);
+            border-radius: 10px;
+            padding: 10px 14px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .param-group h3 {
+            font-size: 13px;
+            color: #88ccff;
+            margin-bottom: 6px;
+        }
+
+        .slider-item { margin-bottom: 7px; }
+        .slider-item:last-child { margin-bottom: 0; }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #ccddef;
+            margin-bottom: 1px;
+        }
+        .slider-label .name { font-weight: 600; }
+        .slider-label .value {
+            color: #ffd700;
+            font-family: 'Consolas', monospace;
+            font-weight: 700;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: linear-gradient(90deg, #2a3a5a, #4a8aff);
+            outline: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #6af, #3a7aff);
+            border: 2px solid #fff;
+            box-shadow: 0 0 8px rgba(60,120,255,0.5);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #6af, #3a7aff);
+            border: 2px solid #fff;
+            cursor: pointer;
+        }
+
+        .aux-group {
+            background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,150,0,0.05));
+            border: 1px solid rgba(255,215,0,0.2);
+        }
+        .aux-group h3 { color: #ffd700; }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 11px;
+        }
+        .status-row:last-child { border-bottom: none; }
+        .status-row .label { color: #8899bb; }
+        .status-row .val { color: #6f8; font-family: 'Consolas', monospace; font-weight: 600; }
+        .status-row .val-warn { color: #fa0; }
+        .status-row .val-err { color: #f66; }
+
+        .mode-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .mode-off   { background: #533; color: #f66; }
+        .mode-start { background: #552; color: #fa0; }
+        .mode-active{ background: #353; color: #6f6; }
+        .mode-stop  { background: #555; color: #aaa; }
+
+        /* RIGHT PANEL — Bird canvas + Graph overlay */
+        .right-panel {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 50% 80%, #1a3355 0%, #0a0a1a 100%);
+        }
+
+        .cloud {
+            position: absolute;
+            color: rgba(255,255,255,0.06);
+            font-size: 80px;
+            animation: cloudDrift 20s linear infinite;
+            pointer-events: none;
+        }
+        .cloud:nth-child(1) { top: 10%; left: -10%; animation-duration: 25s; font-size: 60px; }
+        .cloud:nth-child(2) { top: 30%; left: -20%; animation-duration: 30s; font-size: 90px; }
+        .cloud:nth-child(3) { top: 60%; left: -5%; animation-duration: 22s; font-size: 50px; }
+        @keyframes cloudDrift {
+            0% { transform: translateX(-200px); opacity: 0; }
+            10% { opacity: 0.6; }
+            90% { opacity: 0.6; }
+            100% { transform: translateX(calc(100vw + 200px)); opacity: 0; }
+        }
+
+        #birdCanvas { display: block; width: 100%; height: 100%; position: relative; z-index: 2; }
+
+        /* Graph overlay in bottom-right of right panel */
+        .graph-overlay {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            width: 45%;
+            height: 30%;
+            min-width: 280px;
+            min-height: 100px;
+            background: rgba(0,0,0,0.65);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            z-index: 10;
+            padding: 6px;
+            pointer-events: none;
+        }
+        .graph-overlay .graph-title {
+            font-size: 9px;
+            color: #667799;
+            margin-bottom: 2px;
+            display: flex; gap: 12px;
+        }
+        .graph-overlay .graph-title span { display: inline-flex; align-items: center; gap: 3px; }
+        .graph-overlay .graph-title .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+        .graph-overlay .graph-title .dot-t   { background: #ff6; }
+        .graph-overlay .graph-title .dot-s   { background: #6af; }
+        .graph-overlay .graph-title .dot-pwm { background: #6f8; }
+        #graphCanvas { width: 100%; height: calc(100% - 14px); display: block; }
+
+        .left-panel::-webkit-scrollbar { width: 4px; }
+        .left-panel::-webkit-scrollbar-track { background: transparent; }
+        .left-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+        @media (max-width: 768px) {
+            .container { flex-direction: column-reverse; }
+            .left-panel { width: 100%; min-width: 0; height: 45vh; border-right: none; border-top: 2px solid rgba(255,255,255,0.1); }
+            .right-panel { height: 55vh; }
+            .graph-overlay { width: 60%; height: 25%; min-width: 200px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+        <div class="panel-title">🦅 BIRD FLAP</div>
+        <div class="panel-sub">🦅 사인파 날개짓 시뮬레이터 · 생체모방 flap</div>
+
+        <div class="param-group">
+            <h3>⚙ bird_flap CLI 파라미터</h3>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">maxFreqX10 (최대 주파수)</span>
+                    <span class="value" id="maxFreqVal">2.0 Hz</span>
+                </div>
+                <input type="range" id="maxFreq" min="5" max="40" value="20" step="1">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">minFreqX10 (최소 주파수)</span>
+                    <span class="value" id="minFreqVal">0.5 Hz</span>
+                </div>
+                <input type="range" id="minFreq" min="1" max="10" value="5" step="1">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">max_amplitude (최대 진폭)</span>
+                    <span class="value" id="maxAmpVal">300</span>
+                </div>
+                <input type="range" id="maxAmp" min="0" max="500" value="300" step="1">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">upRatio100x (상승 비율)</span>
+                    <span class="value" id="upRatioVal">0.40</span>
+                </div>
+                <input type="range" id="upRatio" min="10" max="80" value="40" step="1">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">servo_speed (°/s)</span>
+                    <span class="value" id="servoSpeedVal">100 °/s</span>
+                </div>
+                <input type="range" id="servoSpeed" min="10" max="2000" value="100" step="10">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">slewRate (출력 제한)</span>
+                    <span class="value" id="slewRateVal">3000 u/s</span>
+                </div>
+                <input type="range" id="slewRate" min="500" max="10000" value="3000" step="100">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">softStartMs (시작 램프)</span>
+                    <span class="value" id="softStartVal">800 ms</span>
+                </div>
+                <input type="range" id="softStart" min="100" max="3000" value="800" step="50">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">softStopMs (정지 램프)</span>
+                    <span class="value" id="softStopVal">500 ms</span>
+                </div>
+                <input type="range" id="softStop" min="100" max="3000" value="500" step="50">
+            </div>
+
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">freqTauMs (주파수 LPF)</span>
+                    <span class="value" id="freqTauVal">200 ms</span>
+                </div>
+                <input type="range" id="freqTau" min="10" max="1000" value="200" step="10">
+            </div>
+        </div>
+
+        <div class="param-group aux-group">
+            <h3>🎮 Aux Value (INPUT_BIRD_FLAP)</h3>
+            <div class="slider-item">
+                <div class="slider-label">
+                    <span class="name">← -500 (정지) &nbsp;&nbsp;&nbsp; +500 (최대 freq) →</span>
+                    <span class="value" id="auxVal">0</span>
+                </div>
+                <input type="range" id="auxSlider" min="-500" max="500" value="0" step="1">
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                <span style="font-size:11px;color:#8899bb;">BOXUSER1:</span>
+                <span id="modeBadge" class="mode-badge mode-off">● OFF</span>
+                <span style="font-size:11px;color:#8899bb;">상태: <span id="stateName" style="color:#ffd700;font-weight:700;">OFF</span></span>
+            </div>
+        </div>
+
+        <div style="padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:11px;color:#667799;">
+            <div class="status-row">
+                <span class="label">주파수 (raw → smoothed):</span>
+                <span class="val" id="freqDisp">0.50 → 0.50 Hz</span>
+            </div>
+            <div class="status-row">
+                <span class="label">위상 (phase 0.0~1.0):</span>
+                <span class="val" id="phaseDisp">0.000</span>
+            </div>
+            <div class="status-row">
+                <span class="label">진폭 (amplitude):</span>
+                <span class="val" id="amplitudeDisp">0</span>
+            </div>
+            <hr style="border:0;border-top:1px solid rgba(255,255,255,0.06);margin:4px 0;">
+            <div class="status-row">
+                <span class="label">🎯 Target:</span>
+                <span class="val" id="targetDisp">0</span>
+            </div>
+            <div class="status-row">
+                <span class="label">⚙ Servo (속도제한):</span>
+                <span class="val" id="servoDisp">0</span>
+            </div>
+            <div class="status-row">
+                <span class="label">📤 PWM 출력:</span>
+                <span class="val" id="pwmDisp">1500 us</span>
+            </div>
+            <div class="status-row">
+                <span class="label">⚠ Servo Lag (Error):</span>
+                <span class="val" id="lagDisp">0</span>
+            </div>
+            <hr style="border:0;border-top:1px solid rgba(255,255,255,0.06);margin:4px 0;">
+            <div class="status-row" style="font-size:10px;color:#556688;">
+                <span class="label">Pipeline: AUX → LPF → Phase → Sine → <b style="color:#fa0;">Target</b> → <b style="color:#6af;">ServoSpeed</b> → <b style="color:#6f8;">SlewRate</b> → PWM</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+        <div class="cloud">☁️</div>
+        <div class="cloud">☁️</div>
+        <div class="cloud">☁️</div>
+        <canvas id="birdCanvas"></canvas>
+
+        <!-- Graph overlay -->
+        <div class="graph-overlay" id="graphOverlay">
+            <div class="graph-title">
+                <span><span class="dot dot-t"></span> Target</span>
+                <span><span class="dot dot-s"></span> Servo</span>
+                <span><span class="dot dot-pwm"></span> PWM</span>
+            </div>
+            <canvas id="graphCanvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+// =========================================================
+// BIRD FLAP SIMULATOR — Firmware-accurate servo model
+// =========================================================
+//
+// Pipeline:
+//   AUX → Frequency LPF → Phase → Asymmetric Sine → Target Position
+//   → Servo Speed Limit → Actual Servo Position → Slew Rate → PWM Output
+//
+
+// =========================================================
+// CANVAS SETUP
+// =========================================================
+const canvas = document.getElementById('birdCanvas');
+const ctx = canvas.getContext('2d');
+
+const graphCanvas = document.getElementById('graphCanvas');
+const gctx = graphCanvas.getContext('2d');
+
+// =========================================================
+// DOM REFS
+// =========================================================
+const maxFreqEl    = document.getElementById('maxFreq');
+const minFreqEl    = document.getElementById('minFreq');
+const maxAmpEl     = document.getElementById('maxAmp');
+const upRatioEl    = document.getElementById('upRatio');
+const servoSpeedEl = document.getElementById('servoSpeed');
+const slewRateEl   = document.getElementById('slewRate');
+const softStartEl  = document.getElementById('softStart');
+const softStopEl   = document.getElementById('softStop');
+const freqTauEl    = document.getElementById('freqTau');
+const auxSlider    = document.getElementById('auxSlider');
+
+const maxFreqVal    = document.getElementById('maxFreqVal');
+const minFreqVal    = document.getElementById('minFreqVal');
+const maxAmpVal     = document.getElementById('maxAmpVal');
+const upRatioVal    = document.getElementById('upRatioVal');
+const servoSpeedVal = document.getElementById('servoSpeedVal');
+const slewRateVal   = document.getElementById('slewRateVal');
+const softStartVal  = document.getElementById('softStartVal');
+const softStopVal   = document.getElementById('softStopVal');
+const freqTauVal    = document.getElementById('freqTauVal');
+const auxVal        = document.getElementById('auxVal');
+const modeBadge     = document.getElementById('modeBadge');
+const stateName     = document.getElementById('stateName');
+const freqDisp      = document.getElementById('freqDisp');
+const phaseDisp     = document.getElementById('phaseDisp');
+const amplitudeDisp = document.getElementById('amplitudeDisp');
+const targetDisp    = document.getElementById('targetDisp');
+const servoDisp     = document.getElementById('servoDisp');
+const pwmDisp       = document.getElementById('pwmDisp');
+const lagDisp       = document.getElementById('lagDisp');
+
+// =========================================================
+// STATE (matches firmware servos.c)
+// =========================================================
+const BIRD_FLAP_STATE_OFF      = 0;
+const BIRD_FLAP_STATE_STARTING = 1;
+const BIRD_FLAP_STATE_ACTIVE   = 2;
+const BIRD_FLAP_STATE_STOPPING = 3;
+
+let state = BIRD_FLAP_STATE_OFF;
+let phase = 0.0;
+let freqSmoothed = 0.5;
+let amplitude = 0.0;
+let freqLpfCoef = 0.0;
+
+// === New three-tier output variables ===
+let targetOutput = 0.0;   // sine wave target position
+let servoOutput  = 0.0;   // after servo speed limiting
+let pwmOutput    = 0.0;   // after slew rate limiting
+
+const PWM_CENTER = 1500;
+const PWM_RANGE  = 500;
+
+// Graph history (last 300 frames = ~5 sec at 60fps)
+const GRAPH_LEN = 300;
+const graphTarget = [];
+const graphServo  = [];
+const graphPWM    = [];
+
+function updateLpfCoef(tauMs) {
+    const dt = 0.001; // 1kHz
+    const tau = tauMs * 0.001;
+    freqLpfCoef = dt / (dt + tau);
+}
+
+// =========================================================
+// RESIZE — bird canvas
+// =========================================================
+function resizeCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width  = rect.width * devicePixelRatio;
+    canvas.height = rect.height * devicePixelRatio;
+    canvas.style.width  = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+window.addEventListener('resize', resizeCanvas);
+
+// =========================================================
+// RESIZE — graph canvas
+// =========================================================
+function resizeGraph() {
+    const rect = graphCanvas.parentElement.getBoundingClientRect();
+    const w = graphCanvas.clientWidth || 280;
+    const h = graphCanvas.clientHeight || 86;
+    graphCanvas.width  = w * devicePixelRatio;
+    graphCanvas.height = h * devicePixelRatio;
+    gctx.scale(devicePixelRatio, devicePixelRatio);
+}
+
+const graphObserver = new ResizeObserver(() => resizeGraph());
+document.getElementById('graphOverlay').addEventListener('transitionend', resizeGraph);
+// Also call on window resize as backup
+window.addEventListener('resize', setTimeout.bind(null, resizeGraph, 50));
+
+// =========================================================
+// DRAW ANGRY BIRD (unchanged from previous version)
+// =========================================================
+function drawBird(cx, cy, scale, wingAngle, flapIntensity) {
+    const s = scale;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Body
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 75 * s, 58 * s, 0, 0, Math.PI * 2);
+    const bodyGrad = ctx.createRadialGradient(-15*s, -15*s, 5*s, 0, 0, 75*s);
+    bodyGrad.addColorStop(0, '#e84a2f');
+    bodyGrad.addColorStop(0.7, '#c2351e');
+    bodyGrad.addColorStop(1, '#8a2010');
+    ctx.fillStyle = bodyGrad; ctx.fill();
+    ctx.strokeStyle = '#5a1508'; ctx.lineWidth = 2.5 * s; ctx.stroke();
+
+    // White belly
+    ctx.beginPath();
+    ctx.ellipse(0, 22 * s, 42 * s, 32 * s, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5e6d0'; ctx.fill();
+    ctx.strokeStyle = '#c8b098'; ctx.lineWidth = 2 * s; ctx.stroke();
+
+    // Eyes
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(-24*s, -24*s, 20*s, 22*s, -0.1, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 2*s; ctx.stroke();
+    ctx.beginPath(); ctx.arc(-18*s, -22*s, 9*s, 0, Math.PI*2); ctx.fillStyle = '#1a1a1a'; ctx.fill();
+    ctx.beginPath(); ctx.arc(-14*s, -26*s, 3.5*s, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-42*s, -40*s); ctx.lineTo(-8*s, -36*s);
+    ctx.strokeStyle = '#3a0a00'; ctx.lineWidth = 4*s; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(24*s, -24*s, 20*s, 22*s, 0.1, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 2*s; ctx.stroke();
+    ctx.beginPath(); ctx.arc(18*s, -22*s, 9*s, 0, Math.PI*2); ctx.fillStyle = '#1a1a1a'; ctx.fill();
+    ctx.beginPath(); ctx.arc(14*s, -26*s, 3.5*s, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(42*s, -40*s); ctx.lineTo(8*s, -36*s);
+    ctx.strokeStyle = '#3a0a00'; ctx.lineWidth = 4*s; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.restore();
+
+    // Beak
+    ctx.beginPath(); ctx.moveTo(5*s, -2*s); ctx.lineTo(52*s, 4*s);
+    ctx.lineTo(50*s, 10*s); ctx.lineTo(5*s, 10*s); ctx.closePath();
+    ctx.fillStyle = '#f09c20'; ctx.fill(); ctx.strokeStyle = '#b07010'; ctx.lineWidth = 1.5*s; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5*s, 10*s); ctx.lineTo(46*s, 14*s);
+    ctx.lineTo(43*s, 20*s); ctx.lineTo(5*s, 16*s); ctx.closePath();
+    ctx.fillStyle = '#e08815'; ctx.fill(); ctx.strokeStyle = '#b07010'; ctx.lineWidth = 1.5*s; ctx.stroke();
+
+    // Feet
+    ctx.strokeStyle = '#f09c20'; ctx.lineWidth = 3*s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-20*s, 52*s); ctx.lineTo(-20*s, 65*s);
+    ctx.lineTo(-32*s, 70*s); ctx.moveTo(-20*s, 65*s); ctx.lineTo(-8*s, 70*s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(20*s, 52*s); ctx.lineTo(20*s, 65*s);
+    ctx.lineTo(8*s, 70*s); ctx.moveTo(20*s, 65*s); ctx.lineTo(32*s, 70*s); ctx.stroke();
+
+    // Tail
+    const tailWag = Math.sin(phase * Math.PI * 2) * 3 * s * flapIntensity;
+    ctx.fillStyle = '#2a1a0a'; ctx.strokeStyle = '#1a0a00'; ctx.lineWidth = 1.5*s;
+    for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        const tx = -68*s + i*8*s + tailWag * i;
+        const ty = 12*s + i*14*s;
+        ctx.moveTo(-58*s, 5*s + i*10*s);
+        ctx.lineTo(tx - 18*s, ty + 5*s);
+        ctx.lineTo(tx - 6*s, ty + 18*s);
+        ctx.lineTo(-52*s, 14*s + i*10*s);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+
+    // Propeller
+    const propAngle = performance.now() / 1000 * 30;
+    ctx.save(); ctx.translate(58*s, 4*s); ctx.rotate(propAngle);
+    ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.strokeStyle = '#888'; ctx.lineWidth = 1.5*s;
+    for (let i = 0; i < 2; i++) {
+        ctx.beginPath(); ctx.ellipse(0, i===0 ? -20*s : 20*s, 5*s, 18*s, 0, 0, Math.PI*2);
+        ctx.fill(); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 5*s, 0, Math.PI*2);
+    ctx.fillStyle = '#555'; ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // Wings
+    const wingRad = wingAngle * Math.PI / 180;
+    drawSingleWing(ctx, s, -1, wingRad);
+    drawSingleWing(ctx, s,  1, wingRad);
+
+    // Pilot cap + goggles
+    ctx.beginPath(); ctx.ellipse(0, -53*s, 34*s, 12*s, 0, Math.PI, 0);
+    ctx.fillStyle = '#4a6a3a'; ctx.fill(); ctx.strokeStyle = '#2a3a1a'; ctx.lineWidth = 2*s; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, -57*s, 24*s, 15*s, 0, Math.PI, 0);
+    ctx.fillStyle = '#3a5a2a'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-32*s, -53*s); ctx.lineTo(32*s, -53*s);
+    ctx.lineTo(30*s, -56*s); ctx.lineTo(-30*s, -56*s); ctx.closePath();
+    ctx.fillStyle = '#2a4a1a'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(-14*s, -49*s, 9*s, 6*s, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(150,200,255,0.2)'; ctx.fill();
+    ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = 1.5*s; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(14*s, -49*s, 9*s, 6*s, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(150,200,255,0.2)'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-23*s, -49*s); ctx.lineTo(-32*s, -47*s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(23*s, -49*s); ctx.lineTo(32*s, -47*s); ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawSingleWing(ctx, s, side, angleRad) {
+    const wingSize = 2.0;
+    const rootX = side * 50 * s;
+    const rootY = -6 * s;
+    const effectiveAngle = angleRad * side * -0.7;
+    ctx.save();
+    ctx.translate(rootX, rootY);
+    ctx.rotate(effectiveAngle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(side*42*s*wingSize, -14*s, side*70*s*wingSize, -4*s);
+    ctx.quadraticCurveTo(side*62*s*wingSize, 8*s, side*32*s*wingSize, 6*s);
+    ctx.closePath();
+    const wg = ctx.createLinearGradient(0, -10*s, side*70*s*wingSize, 0);
+    wg.addColorStop(0, '#d43a1e'); wg.addColorStop(0.5, '#b02a14'); wg.addColorStop(1, '#7a1a0a');
+    ctx.fillStyle = wg; ctx.fill();
+    ctx.strokeStyle = '#4a0e05'; ctx.lineWidth = 2*s; ctx.stroke();
+    ctx.strokeStyle = 'rgba(74,14,5,0.3)'; ctx.lineWidth = 1*s;
+    for (let i = 0; i < 5; i++) {
+        const fx = side * (8*s + i*12*s);
+        ctx.beginPath(); ctx.moveTo(fx, -2*s);
+        ctx.lineTo(fx + side * 10*s, 5*s - i*2*s); ctx.stroke();
+    }
+    ctx.restore();
+}
+
+// =========================================================
+// FIRMWARE-ACCURATE BIRD FLAP UPDATE
+// Pipeline: AUX → LPF → Phase → Sine → Target → ServoSpeed → SlewRate → PWM
+// =========================================================
+function updateBirdFlap(dt, inputValue, cfg) {
+    // inputValue: -500 ~ +500
+    // cfg: { maxFreq, minFreq, maxAmp, upRatio, servoSpeed, slewRate,
+    //        softStartMs, softStopMs, freqTauMs }
+
+    const boxActive = inputValue > -490;
+
+    // === Target amplitude: proportional to input ===
+    const targetAmplitude = boxActive
+        ? ((inputValue + 500) / 1000) * cfg.maxAmp
+        : 0;
+
+    // === State Machine ===
+    switch (state) {
+        case BIRD_FLAP_STATE_OFF:
+            if (boxActive) {
+                state = BIRD_FLAP_STATE_STARTING;
+                amplitude = 0;
+                phase = 0;
+                targetOutput = 0;
+                servoOutput = 0;
+                pwmOutput = 0;
+                freqSmoothed = cfg.minFreq;
+                updateLpfCoef(cfg.freqTauMs);
+            }
+            break;
+
+        case BIRD_FLAP_STATE_STARTING:
+            if (!boxActive) {
+                state = BIRD_FLAP_STATE_STOPPING;
+                break;
+            }
+            // Soft start: consistent ramp speed using cfg.maxAmp
+            amplitude += cfg.maxAmp * dt / (cfg.softStartMs * 0.001);
+            if (amplitude >= targetAmplitude) {
+                amplitude = targetAmplitude;
+                state = BIRD_FLAP_STATE_ACTIVE;
+            }
+            break;
+
+        case BIRD_FLAP_STATE_ACTIVE:
+            if (!boxActive) {
+                state = BIRD_FLAP_STATE_STOPPING;
+                break;
+            }
+            amplitude = targetAmplitude;
+            break;
+
+        case BIRD_FLAP_STATE_STOPPING:
+            amplitude -= cfg.maxAmp * dt / (cfg.softStopMs * 0.001);
+            if (amplitude <= 0) {
+                amplitude = 0;
+                state = BIRD_FLAP_STATE_OFF;
+                targetOutput = 0;
+                servoOutput = 0;
+                pwmOutput = 0;
+                return; // skip rest
+            }
+            break;
+    }
+
+    // === Step 1: Frequency from input + LPF ===
+    const freqRange = cfg.maxFreq - cfg.minFreq;
+    const rawFreq = cfg.minFreq + freqRange * ((inputValue + 500) / 1000);
+    const clampedFreq = Math.max(cfg.minFreq, Math.min(cfg.maxFreq, rawFreq));
+    freqSmoothed += (clampedFreq - freqSmoothed) * freqLpfCoef;
+
+    // === Step 2: Phase Accumulator ===
+    phase += freqSmoothed * dt;
+    if (phase >= 1.0) phase -= 1.0;
+
+    // === Step 3: Asymmetric Sine Wave → Target Position ===
+    let sineValue;
+    if (phase < cfg.upRatio) {
+        sineValue = Math.sin(Math.PI * phase / cfg.upRatio);
+    } else {
+        sineValue = -Math.sin(Math.PI * (phase - cfg.upRatio) / (1.0 - cfg.upRatio));
+    }
+    targetOutput = sineValue * amplitude;
+
+    // === Step 4: Servo Speed Limiting (targetOutput → servoOutput) ===
+    const maxMovePerFrame = cfg.servoSpeed * dt;
+    let servoError = targetOutput - servoOutput;
+    if (servoError > maxMovePerFrame) servoError = maxMovePerFrame;
+    if (servoError < -maxMovePerFrame) servoError = -maxMovePerFrame;
+    servoOutput += servoError;
+
+    // === Step 5: Slew Rate Limiting (servoOutput → pwmOutput) ===
+    const slewPerDt = cfg.slewRate * dt;
+    let slewDiff = servoOutput - pwmOutput;
+    if (slewDiff > slewPerDt) slewDiff = slewPerDt;
+    if (slewDiff < -slewPerDt) slewDiff = -slewPerDt;
+    pwmOutput += slewDiff;
+
+    // === Update graph history ===
+    graphTarget.push(targetOutput);
+    graphServo.push(servoOutput);
+    graphPWM.push(pwmOutput);
+    if (graphTarget.length > GRAPH_LEN) {
+        graphTarget.shift();
+        graphServo.shift();
+        graphPWM.shift();
+    }
+}
+
+// =========================================================
+// DRAW GRAPH
+// =========================================================
+function drawGraph() {
+    const w = graphCanvas.width / devicePixelRatio;
+    const h = graphCanvas.height / devicePixelRatio;
+    if (w < 10 || h < 10) return;
+
+    gctx.clearRect(0, 0, w, h);
+
+    const len = graphTarget.length;
+    if (len < 2) return;
+
+    // Find range for scaling
+    let minVal = 0, maxVal = 1;
+    for (let i = 0; i < len; i++) {
+        const v = Math.max(Math.abs(graphTarget[i] || 0), Math.abs(graphServo[i] || 0), Math.abs(graphPWM[i] || 0));
+        if (v > maxVal) maxVal = v;
+    }
+    if (maxVal < 1) maxVal = 1;
+
+    const pad = 4;
+    const plotW = w - pad * 2;
+    const plotH = h - pad * 2;
+    const midY = pad + plotH / 2;
+
+    // Helper: value → y pixel
+    function valToY(v) {
+        return midY - (v / maxVal) * (plotH / 2 * 0.9);
+    }
+
+    // Zero line
+    gctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    gctx.lineWidth = 1;
+    gctx.beginPath();
+    gctx.moveTo(pad, valToY(0));
+    gctx.lineTo(pad + plotW, valToY(0));
+    gctx.stroke();
+
+    // Draw three waveforms
+    const colors = ['#ff6', '#6af', '#6f8'];
+    const data = [graphTarget, graphServo, graphPWM];
+
+    for (let d = 0; d < 3; d++) {
+        gctx.strokeStyle = colors[d];
+        gctx.lineWidth = 1.5;
+        gctx.beginPath();
+        let started = false;
+        for (let i = 0; i < len; i++) {
+            const x = pad + (i / (len - 1)) * plotW;
+            const y = valToY(data[d][i] || 0);
+            if (!started) { gctx.moveTo(x, y); started = true; }
+            else { gctx.lineTo(x, y); }
+        }
+        gctx.stroke();
+    }
+}
+
+// =========================================================
+// MAIN LOOP
+// =========================================================
+let lastTime = performance.now();
+
+function animate(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+    lastTime = timestamp;
+
+    // Read config from sliders
+    const cfg = {
+        maxFreq:     parseFloat(maxFreqEl.value) / 10,
+        minFreq:     parseFloat(minFreqEl.value) / 10,
+        maxAmp:      parseFloat(maxAmpEl.value),
+        upRatio:     parseFloat(upRatioEl.value) / 100,
+        softStartMs: parseFloat(softStartEl.value),
+        softStopMs:  parseFloat(softStopEl.value),
+        slewRate:    parseFloat(slewRateEl.value),
+        freqTauMs:   parseFloat(freqTauEl.value),
+        servoSpeed:  parseFloat(servoSpeedEl.value),
+    };
+
+    const inputValue = parseFloat(auxSlider.value);
+
+    // Update slider value displays
+    maxFreqVal.textContent    = cfg.maxFreq.toFixed(1) + ' Hz';
+    minFreqVal.textContent    = cfg.minFreq.toFixed(1) + ' Hz';
+    maxAmpVal.textContent     = cfg.maxAmp;
+    upRatioVal.textContent    = cfg.upRatio.toFixed(2) + '  (0.10=up 10% / 0.50=대칭 / 0.80=down 20%)';
+    servoSpeedVal.textContent = cfg.servoSpeed + ' °/s';
+    slewRateVal.textContent   = cfg.slewRate + ' u/s';
+    softStartVal.textContent  = cfg.softStartMs + ' ms';
+    softStopVal.textContent   = cfg.softStopMs + ' ms';
+    freqTauVal.textContent    = cfg.freqTauMs + ' ms';
+    auxVal.textContent        = inputValue;
+
+    // Run firmware-accurate update
+    updateBirdFlap(dt, inputValue, cfg);
+
+    // Update mode badge
+    const stateNames = ['OFF', 'STARTING', 'ACTIVE', 'STOPPING'];
+    const badgeClasses = ['mode-off', 'mode-start', 'mode-active', 'mode-stop'];
+    const flapIntensity = Math.abs(amplitude) / (cfg.maxAmp || 1);
+    stateName.textContent = stateNames[state];
+    modeBadge.textContent = state === BIRD_FLAP_STATE_ACTIVE ? '● FLAP ON' :
+                           (state === BIRD_FLAP_STATE_OFF ? '● OFF' : '● ' + stateNames[state]);
+    modeBadge.className = 'mode-badge ' + badgeClasses[state];
+
+    // Status displays
+    const rawFreqDisp = cfg.minFreq + (cfg.maxFreq - cfg.minFreq) * ((inputValue + 500) / 1000);
+    freqDisp.textContent      = Math.max(cfg.minFreq, Math.min(cfg.maxFreq, rawFreqDisp)).toFixed(2) + ' → ' + freqSmoothed.toFixed(2) + ' Hz';
+    phaseDisp.textContent     = phase.toFixed(3);
+    amplitudeDisp.textContent = amplitude.toFixed(0) + ' / ' + cfg.maxAmp;
+    targetDisp.textContent    = cfg.maxAmp > 0 ? targetOutput.toFixed(1) : '0';
+    servoDisp.textContent     = cfg.maxAmp > 0 ? servoOutput.toFixed(1) : '0';
+
+    // PWM display (us)
+    const pwmUs = Math.round(PWM_CENTER + pwmOutput * PWM_RANGE / (cfg.maxAmp || 1) * 0.5);
+    pwmDisp.textContent = pwmUs + ' us';
+
+    // Servo lag
+    const lag = targetOutput - servoOutput;
+    const absLag = Math.abs(lag);
+    let lagClass = 'val';
+    if (absLag > cfg.maxAmp * 0.3) lagClass = 'val-err';
+    else if (absLag > cfg.maxAmp * 0.1) lagClass = 'val-warn';
+    lagDisp.textContent = (targetOutput >= 0 ? '+' : '') + targetOutput.toFixed(0)
+        + ' / ' + (servoOutput >= 0 ? '+' : '') + servoOutput.toFixed(0)
+        + ' / ' + pwmUs + ' us  |  Err: ' + (lag >= 0 ? '+' : '') + lag.toFixed(1);
+    lagDisp.className = 'status-row ' + lagClass;
+
+    // === DRAW BIRD ===
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Ground
+    const groundY = h * 0.82;
+    const groundGrad = ctx.createLinearGradient(0, groundY, 0, h);
+    groundGrad.addColorStop(0, '#2a4a2a');
+    groundGrad.addColorStop(1, '#1a3a1a');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, groundY, w, h - groundY);
+
+    // Grass
+    ctx.strokeStyle = '#3a6a3a'; ctx.lineWidth = 2;
+    for (let i = 0; i < 30; i++) {
+        const gx = i * (w / 30) + Math.sin(i * 2.7 + 0.5) * 10;
+        const gh = 6 + Math.sin(i * 1.3) * 4;
+        ctx.beginPath(); ctx.moveTo(gx, groundY);
+        ctx.quadraticCurveTo(gx + 2, groundY - gh, gx + 4, groundY); ctx.stroke();
+    }
+
+    // Bird position
+    const cx = w * 0.58;
+    const cy = h * 0.42;
+    const scale = Math.min(w, h) / 650;
+
+    // Shadow
+    ctx.beginPath(); ctx.ellipse(cx, groundY + 2, 75 * scale, 10 * scale, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
+
+    // Bounce (use pwmOutput for visual, since that's what the servo actually does)
+    const normOutput = pwmOutput / (cfg.maxAmp || 1);
+    const bounce = Math.max(0, normOutput) * 10 * scale;
+    const bounceY = cy - bounce;
+
+    // Wing angle from pwmOutput (actual servo position)
+    const wingAngle = pwmOutput / (cfg.maxAmp || 1) * 45;
+
+    drawBird(cx, bounceY, scale, wingAngle, flapIntensity);
+
+    // === DRAW GRAPH ===
+    drawGraph();
+
+    requestAnimationFrame(animate);
+}
+
+// =========================================================
+// START
+// =========================================================
+resizeCanvas();
+setTimeout(resizeGraph, 100);
+updateLpfCoef(200);
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

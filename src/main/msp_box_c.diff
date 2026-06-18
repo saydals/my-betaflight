@@ -1,0 +1,21 @@
+90c90
+<     { .boxId = BOXUSER1, .boxName = "USER1", .permanentId = 40 },
+---
+>     { .boxId = BOXUSER1, .boxName = "BIRD FLAP", .permanentId = 40 },
+143,145c143,144
+<     if (box->boxId == BOXUSER1 && strlen(modeActivationConfig()->box_user_1_name) > 0) {
+<         sbufWriteString(dst, modeActivationConfig()->box_user_1_name);
+<     } else if (box->boxId == BOXUSER2 && strlen(modeActivationConfig()->box_user_2_name) > 0) {
+---
+>     // BOXUSER1 is fixed as "BIRD FLAP" — custom name override disabled
+>     if (box->boxId == BOXUSER2 && strlen(modeActivationConfig()->box_user_2_name) > 0) {
+314c313
+<                 case BOXUSER1:
+---
+>                 // BOXUSER1 is reserved for Bird Flap — not mapped to PINIO
+325a325,329
+> #endif
+> 
+> #ifdef USE_SERVOS
+>     // BOXUSER1 is always available for Bird Flap servo control (independent of PINIO)
+>     BME(BOXUSER1);

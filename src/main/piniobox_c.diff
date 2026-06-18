@@ -1,0 +1,10 @@
+54c54,60
+<         pinioBoxRuntimeConfig.boxId[i] = box ? box->boxId : BOXID_NONE;
+---
+>         // BOXUSER1 is reserved for Bird Flap servo control.
+>         // It must not be connected to PINIO output to prevent unintended pin toggling.
+>         if (box && box->boxId == BOXUSER1) {
+>             pinioBoxRuntimeConfig.boxId[i] = BOXID_NONE;
+>         } else {
+>             pinioBoxRuntimeConfig.boxId[i] = box ? box->boxId : BOXID_NONE;
+>         }
