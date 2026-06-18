@@ -1,156 +1,143 @@
-![Betaflight](images/bf_logo.png)
+# Betaflight Custom Firmware for Fixed-Wing
 
-[![Latest version](https://img.shields.io/github/v/release/betaflight/betaflight)](https://github.com/betaflight/betaflight/releases) [![Build](https://img.shields.io/github/actions/workflow/status/betaflight/betaflight/nightly.yml?branch=master)](https://github.com/betaflight/betaflight/actions/workflows/nightly.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Join us on Discord!](https://img.shields.io/discord/868013470023548938)](https://discord.gg/n4E6ak4u3c)
+본 프로젝트는 [Betaflight](https://github.com/betaflight/betaflight) 4.5.3을 기반으로 **RC 고정익(비행기)** 에 최적화된 개조 펌웨어입니다.
 
-Betaflight is flight controller software (firmware) used to fly multi-rotor craft and fixed wing craft.
+---
 
-This fork differs from Baseflight and Cleanflight in that it focuses on flight performance, leading-edge feature additions, and wide target support.
+## 1. 주요 패치 (Key Features)
 
-## Events
+| # | 패치 내용 | 설명 |
+|---|-----------|------|
+| 1 | **I-term 회전 최적화** | 소각도 근사 대신 로드리게스 회전 변환(Rodrigues' Rotation) 적용, 급뱅크턴 중 자세 계산 정확도 향상 |
+| 2 | **Dshot 모터 버저** | 기체가 Prepped for Arming 상태가 되면 모터 비콘음 알림 (RX_SET 기반) |
+| 3 | **비행기 GUI 상시 표시** | 믹서 종류 무관, Configurator 메인화면에 3D 비행기 모델 항상 표시 |
+| 4 | **OSD 레스큐 좌표/고도** | 레스큐 작동 중 목표 좌표(Home/A/B) 및 실시간 목표 고도 OSD 표시 |
+| 5 | **예약 짐벌 서보 제거** | 강제 짐벌 서보 할당 코드 삭제 → 서보 0번부터 자유 할당 가능 |
+| 6 | **OSD Ready 필드** | 레스큐 세부 단계(Phase) 실시간 표시 |
+| 7 | **Aux Value → 서보 모니터** | 서보 0~3 출력값(us)을 4자리 숫자로 한 줄 표시 |
+| 8 | **단독 셔틀 모드** | 독립 비행 모드로 셔틀 하강/대기만 사용 가능 |
+| 9 | **GPS LED** | 사용자 설정 최소 위성 수 완전 만족 시에만 녹색 점등 |
 
-| Date  | Event |
-| - | - |
-| 01-11-2022 | Firmware 4.4 Feature freeze |
-| 29-01-2023 | Firmware 4.4 Release |
+---
 
+## 2. 믹서 설정 (Mixer)
 
-## News
+### 2.1 Airplane Mixer
+| 출력핀 | 기능 | 설명 |
+|--------|------|------|
+| S1, S2 | **모터** | Dshot 지원 |
+| S3, S4 | 서보 0, 1 | 에일러론 자동 할당 |
+| S5 | 서보 2 | 엘리베이터 할당 |
+| S6 | 서보 3 | 러더 할당 |
 
-### Requirements for the submission of new and updated targets
+### 2.2 Custom Airplane Mixer
+S1, S2는 모터 고정 (S2를 서보로 대체 불가). S3~S6 완전 커스텀 할당 가능.
 
-The following new requirements for pull requests adding new targets or modifying existing targets are put in place from now on:
+**CLI 예시:**
+```
+mixer CUSTOMAIRPLANE
+mmix reset
+mmix 0  1.000  0.000  0.000  0.300
+mmix 1  1.000  0.000  0.000 -0.300
 
-1. Read the [hardware specification](https://betaflight.com/docs/development/manufacturer/manufacturer-design-guidelines)
+smix reset
+smix 0 0 0 100 0 0 100 0
+smix 1 1 0 100 0 0 100 0
+smix 2 2 1 100 0 0 100 0
+smix 3 3 2 100 0 0 100 0
+```
 
-2. No new F3 based targets will be accepted;
+### 서보 입력 소스 ID
+| ID | 입력 소스 | ID | 입력 소스 |
+|----|----------|----|----------|
+| 0 | Stabilized ROLL | 7 | RC THROTTLE |
+| 1 | Stabilized PITCH | 8~11 | RC AUX 1~4 |
+| 2 | Stabilized YAW | 12 | GIMBAL PITCH |
+| 3 | Stabilized THROTTLE | 13 | GIMBAL ROLL |
+| 4~6 | RC ROLL/PITCH/YAW | **14** | **Bird Flap** |
 
-3. For any new target that is to be added, only a Unified Target config into https://github.com/betaflight/unified-targets/tree/master/configs/default needs to be submitted. See the [instructions](https://betaflight.com/docs/manufacturer/creating-an-unified-target) for how to create a Unified Target configuration. If there is no Unified Target for the MCU type of the new target (see instructions above), then a 'legacy' format target definition into `src/main/target/` has to be submitted as well;
+**Elevon(전비익) 예시:**
+```
+smix 0 0 0 50 0 0 100 0     # 우측: 롤 50%
+smix 1 0 1 50 0 0 100 0     # 우측: 피치 50%
+smix 2 1 0 -50 0 0 100 0    # 좌측: 롤 -50%
+smix 3 1 1  50 0 0 100 0    # 좌측: 피치 50%
+```
 
-4. For changes to existing targets, the change needs to be applied to the Unified Target config in https://github.com/betaflight/unified-targets/tree/master/configs/default. If no Unified Target configuration for the target exists, a new Unified Target configuration will have to be created and submitted. If there is no Unified Target for the MCU type of the new target (see instructions above), then an update to the 'legacy' format target definition in `src/main/target/` has to be submitted alongside the update to the Unified Target configuration.
+---
 
+## 3. GPS 레스큐 & 셔틀 랜딩
 
-## Features
+### 비행 단계 흐름
+**Ascend Alt** → **Flying Home** → **Point A** → **Shuttle/Descent** → **Final Descent** → **Landing**
 
-Betaflight has the following features:
+1. **Ascend Alt**: 설정 피치각 고정, 3초 직선 상승
+2. **Flying Home**: A포인트 타겟 복귀 순항
+3. **Point A**: `descentAlt` 짝수=이륙방향, 홀수=복귀방향에 A포인트 매핑
+4. **Descent**:
+   - 급하강 (shuttleCount=0): A포인트 도달 시 급강하
+   - 셔틀 (shuttleCount>0): A포인트~B포인트 왕복 셔틀 후 계단식 하강
+5. **Final Descent**: 홈 반경 30m 진입까지 속도/고도 추종
+6. **Landing**: 30m 이내에서 landingAlt+landingSpeed 조건 충족 시 활공 스로틀 3초 → 스로틀 1000 차단
 
-* Multi-color RGB LED strip support (each LED can be a different color using variable length WS2811 Addressable RGB strips - use for Orientation Indicators, Low Battery Warning, Flight Mode Status, Initialization Troubleshooting, etc)
-* DShot (150, 300 and 600), Multishot, Oneshot (125 and 42) and Proshot1000 motor protocol support
-* Blackbox flight recorder logging (to onboard flash or external microSD card where equipped)
-* Support for targets that use the STM32 F4, G4, F7 and H7 processors
-* PWM, PPM, SPI, and Serial (SBus, SumH, SumD, Spektrum 1024/2048, XBus, etc) RX connection with failsafe detection
-* Multiple telemetry protocols (CRSF, FrSky, HoTT smart-port, MSP, etc)
-* RSSI via ADC - Uses ADC to read PWM RSSI signals, tested with FrSky D4R-II, X8R, X4R-SB, & XSR
-* OSD support & configuration without needing third-party OSD software/firmware/comm devices
-* OLED Displays - Display information on: Battery voltage/current/mAh, profile, rate profile, mode, version, sensors, etc
-* In-flight manual PID tuning and rate adjustment
-* PID and filter tuning using sliders
-* Rate profiles and in-flight selection of them
-* Configurable serial ports for Serial RX, Telemetry, ESC telemetry, MSP, GPS, OSD, Sonar, etc - Use most devices on any port, softserial included
-* VTX support for Unify Pro and IRC Tramp
-* and MUCH, MUCH more.
+### 핵심 파라미터 (Profile 3 전용)
+| 파라미터 | 역할 |
+|----------|------|
+| BankGain / BankPitchGain | 일반 선회 강도 |
+| SBankGain / SBankPitchGain | 셔틀 선회 강도 |
+| BankYawGain | 러더 기체용 ballooning 감쇠 |
+| ShuttleCount / ShuttleDistance | 셔틀 횟수/거리 |
+| AscendPitch / MidPitch / LandingPitch | 단계별 피치각 |
+| LandingSpeed / landingAlt | 착륙 속도/고도 |
+| AltholdGain | 고도 유지 P게인 |
+| descentAlt / HeadingYawGain | 하강고도 / 미세요게인 |
 
-## Installation & Documentation
+### ⚠️ 중요 - PID Profile 3 경고
+레스큐 제어 파라미터가 **Profile 3 변수를 전용으로 대체(Repurpose)**하여 사용합니다.  
+**수동 비행 시 Profile 3 절대 선택 금지** - Profile 1 또는 2를 사용하세요.
 
-See: https://betaflight.com/docs/wiki
+### 무한 셔틀 스탠바이
+레스큐 ON 시 AUX < 1500 → 착륙 없이 무한 셔틀 홀딩  
+AUX >= 1500 → 정상 착륙 모드 전환  
+(어느 단계든 Failsafe 수신 시 강제 안전 절차 우선)
 
-## Support and Developers Channel
+### 스로틀 제한
+```
+throttleHover - 150 <= 자동 스로틀 <= throttleHover + 250
+```
 
-There's a dedicated Discord server here:
+---
 
-https://discord.gg/n4E6ak4u3c
+## 4. Bird Flap (새 날개짓)
 
-We also have a Facebook Group. Join us to get a place to talk about Betaflight, ask configuration questions, or just hang out with fellow pilots.
+새의 날갯짓을 모방한 서보 플랩 기능. smix id **14** 사용.
 
-https://www.facebook.com/groups/betaflightgroup/
+### 활성화
+```
+smix 0 0 14 100 0 0 100 0   # 서보 0번에 Bird Flap 할당
+```
+Mode 탭 → **Bird Flap** 항목에 AUX 할당 → ON/OFF 제어
 
-Etiquette: Don't ask to ask and please wait around long enough for a reply - sometimes people are out flying, asleep or at work and can't answer immediately.
+### CLI 파라미터
+| 파라미터 | 기본값 | 범위 | 설명 |
+|----------|--------|------|------|
+| `bird_flap_max_freq_10x` | 20 | 5~40 | 최대 플랩 주파수 (×0.1 Hz, 기본 2.0Hz) |
+| `bird_flap_min_freq_10x` | 3 | 1~10 | 최소 플랩 주파수 (×0.1 Hz, 기본 0.3Hz) |
+| `bird_flap_max_amplitude` | 1000 | 0~1000 | 최대 스트로크 진폭 (PWM 단위) |
+| `bird_flap_servo_speed` | 500 | 10~500 | 서보 각속도 제한 (deg/s) |
+| `bird_flap_up_ratio_100x` | 40 | 30~50 | Upstroke 시간비율 (기본 40=Up 40%, Down 60%) |
+| `bird_flap_soft_start_ms` | 800 | 100~3000 | 활성화 시 부드러운 시작 시간 (ms) |
+| `bird_flap_soft_stop_ms` | 600 | 100~3000 | 비활성화 시 부드러운 정지 시간 (ms) |
 
-## Configuration Tool
+### 동작 흐름
+```
+OFF → [AUX ON] → STARTING → [진폭 100%] → ACTIVE → [AUX OFF] → STOPPING → [진폭 0%] → OFF
+```
 
-To configure Betaflight you should use the Betaflight-configurator GUI tool (Windows/OSX/Linux) which can be found here:
+AUX 채널 PWM 값(강도)에 따라 주파수가 minFreq ~ maxFreq로 선형 변화합니다.  
+AUX에 스로틀을 50% 정도 믹스해두면 스로틀에 따라 날개짓 속도가 변하여 자연스럽습니다.
 
-https://github.com/betaflight/betaflight-configurator/releases/latest
+---
 
-## Contributing
-
-Contributions are welcome and encouraged. You can contribute in many ways:
-
-* implement a new feature in the firmware or in configurator (see [below](#Developers));
-* documentation updates and corrections;
-* How-To guides - received help? Help others!
-* bug reporting & fixes;
-* new feature ideas & suggestions;
-* provide a new translation for configurator, or help us maintain the existing ones (see [below](#Translators)).
-
-The best place to start is the Betaflight Discord (registration [here](https://discord.gg/n4E6ak4u3c)). Next place is the github issue tracker:
-
-https://github.com/betaflight/betaflight/issues
-https://github.com/betaflight/betaflight-configurator/issues
-
-Before creating new issues please check to see if there is an existing one, search first otherwise you waste people's time when they could be coding instead!
-
-If you want to contribute to our efforts financially, please consider making a donation to us through [PayPal](https://paypal.me/betaflight).
-
-If you want to contribute financially on an ongoing basis, you should consider becoming a patron for us on [Patreon](https://www.patreon.com/betaflight).
-
-## Developers
-
-Contribution of bugfixes and new features is encouraged. Please be aware that we have a thorough review process for pull requests, and be prepared to explain what you want to achieve with your pull request.
-Before starting to write code, please read our [development guidelines](https://betaflight.com/docs/development) and [coding style definition](https://betaflight.com/docs/development/CodingStyle).
-
-GitHub actions are used to run automatic builds
-
-## Translators
-
-We want to make Betaflight accessible for pilots who are not fluent in English, and for this reason we are currently maintaining translations into 21 languages for Betaflight Configurator: Català, Dansk, Deutsch, Español, Euskera, Français, Galego, Hrvatski, Bahasa Indonesia, Italiano, 日本語, 한국어, Latviešu, Português, Português Brasileiro, polski, Русский язык, Svenska, 简体中文, 繁體中文.
-We have got a team of volunteer translators who do this work, but additional translators are always welcome to share the workload, and we are keen to add additional languages. If you would like to help us with translations, you have got the following options:
-- if you help by suggesting some updates or improvements to translations in a language you are familiar with, head to [crowdin](https://crowdin.com/project/betaflight-configurator) and add your suggested translations there;
-- if you would like to start working on the translation for a new language, or take on responsibility for proof-reading the translation for a language you are very familiar with, please head to the Betaflight Discord chat (registration [here](https://discord.gg/n4E6ak4u3c)), and join the ['translation'](https://discord.com/channels/868013470023548938/1057773726915100702) channel - the people in there can help you to get a new language added, or set you up as a proof reader.
-
-## Hardware Issues
-
-Betaflight does not manufacture or distribute their own hardware. While we are collaborating with and supported by a number of manufacturers, we do not do any kind of hardware support.
-If you encounter any hardware issues with your flight controller or another component, please contact the manufacturer or supplier of your hardware, or check RCGroups https://rcgroups.com/forums/showthread.php?t=2464844 to see if others with the same problem have found a solution.
-
-## Betaflight Releases
-
-https://github.com/betaflight/betaflight/releases
-
-## Open Source / Contributors
-
-Betaflight is software that is **open source** and is available free of charge without warranty to all users.
-
-Betaflight is forked from Cleanflight, so thanks goes to all those who have contributed to Cleanflight and its origins.
-
-Origins for this fork (Thanks!):
-* **Alexinparis** (for MultiWii),
-* **timecop** (for Baseflight),
-* **Dominic Clifton** (for Cleanflight),
-* **borisbstyle** (for Betaflight), and
-* **Sambas** (for the original STM32F4 port).
-
-The Betaflight Configurator is forked from Cleanflight Configurator and its origins.
-
-Origins for Betaflight Configurator:
-* **Dominic Clifton** (for Cleanflight configurator), and
-* **ctn** (for the original Configurator).
-
-Big thanks to current and past contributors:
-* Budden, Martin (martinbudden)
-* Bardwell, Joshua (joshuabardwell)
-* Blackman, Jason (blckmn)
-* ctzsnooze
-* Höglund, Anders (andershoglund)
-* Ledvina, Petr (ledvinap) - **IO code awesomeness!**
-* kc10kevin
-* Keeble, Gary (MadmanK)
-* Keller, Michael (mikeller) - **Configurator brilliance**
-* Kravcov, Albert (skaman82) - **Configurator brilliance**
-* MJ666
-* Nathan (nathantsoi)
-* ravnav
-* sambas - **bringing us the F4**
-* savaga
-* Stålheim, Anton (KiteAnton)
-
-And many many others who haven't been mentioned....
+## License
+GNU General Public License v3.0
