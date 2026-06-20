@@ -1080,16 +1080,6 @@ const clivalue_t valueTable[] = {
 
 #endif // USE_GPS
 
-// PG_BIRD_FLAP_CONFIG
-    { "bird_flap_max_freq",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 5, 40 },   PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, maxFreqX10) },
-    { "bird_flap_min_freq",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 1, 10 },   PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, minFreqX10) },
-    { "bird_flap_servo_speed",      VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 500 },  PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, servo_speed) },
-    { "bird_flap_max_amplitude",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 500 },   PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, max_amplitude) },
-    { "bird_flap_up_ratio",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 30, 50 },   PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, upRatio100x) },
-    { "bird_flap_soft_start",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 100, 3000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, softStartMs) },
-    { "bird_flap_soft_stop",        VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 100, 3000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, softStopMs) },
-    { "bird_flap_freq_tau",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 1000 },  PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, freqTauMs) },
-    { "bird_flap_slew_rate",        VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 10000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, slewRate) },
     { PARAM_NAME_DEADBAND,          VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 32 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, deadband) },
     { PARAM_NAME_YAW_DEADBAND,      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, yaw_deadband) },
     { "yaw_control_reversed",       VAR_INT8   | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, yaw_control_reversed) },
@@ -1780,6 +1770,18 @@ const clivalue_t valueTable[] = {
     { "altitude_prefer_baro",  VAR_INT8   | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_POSITION, offsetof(positionConfig_t, altitude_prefer_baro) },
     { "altitude_lpf",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 1000 }, PG_POSITION, offsetof(positionConfig_t, altitude_lpf) },
     { "altitude_d_lpf",        VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 1000 }, PG_POSITION, offsetof(positionConfig_t, altitude_d_lpf) },
+
+// PG_BIRD_FLAP_CONFIG
+    { "bird_flap_up_amplitude",   VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 500 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, up_amplitude) },
+    { "bird_flap_down_amplitude", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 500 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, down_amplitude) },
+    { "bird_flap_up_ratio",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 30, 80 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, upRatio100x) },
+    { "bird_flap_max_freq_x10",   VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 5, 40 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, maxFreqX10) },
+    { "bird_flap_min_freq_x10",   VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 1, 10 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, minFreqX10) },
+    { "bird_flap_servo_speed",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 500 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, servo_speed) },
+    { "bird_flap_soft_start_ms",  VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 100, 3000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, softStartMs) },
+    { "bird_flap_soft_stop_ms",   VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 100, 3000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, softStopMs) },
+    { "bird_flap_freq_tau_ms",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 1000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, freqTauMs) },
+    { "bird_flap_slew_rate",      VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 10000 }, PG_BIRD_FLAP_CONFIG, offsetof(birdFlapConfig_t, slewRate) },
 
 // PG_MODE_ACTIVATION_CONFIG
 #if defined(USE_CUSTOM_BOX_NAMES)

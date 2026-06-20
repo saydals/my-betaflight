@@ -119,7 +119,8 @@ void pgResetFn_birdFlapConfig(birdFlapConfig_t *config)
     config->maxFreqX10 = 40;       // 4.0 Hz
     config->minFreqX10 = 5;        // 0.5 Hz
     config->servo_speed = 500;     // 500 deg/s
-    config->max_amplitude = 500;   // 500 servo units
+    config->up_amplitude = 500;    // 500 servo units (upward)
+    config->down_amplitude = 500;  // 500 servo units (downward)
     config->upRatio100x = 35;      // 0.35 (35% rise, 65% fall)
     config->softStartMs = 1000;    // 1000 ms
     config->softStopMs = 1500;     // 1500 ms
@@ -137,7 +138,8 @@ static bool birdFlapConfigured = false;
 static float birdFlapPhase = 0.0f;
 static float birdFlapFreqSmoothed = 0.0f;
 static float birdFlapOutput = 0.0f;
-static float birdFlapAmplitude = 0.0f;
+static float birdFlapUpAmplitude = 0.0f;
+static float birdFlapDownAmplitude = 0.0f;
 
 static float birdFlapFreqLpfCoef = 0.0f;
 static float birdFlapSlewInv = 0.0f;
@@ -197,12 +199,13 @@ static void birdFlapUpdate(const int16_t inputValue)
     const bool boxActive = IS_RC_MODE_ACTIVE(BOXUSER1);
     const birdFlapConfig_t *cfg = birdFlapConfig();
 
-    // === State Machine ===
+    // === State Machine (up/down separate amplitudes) ===
     switch (birdFlapState) {
     case BIRD_FLAP_STATE_OFF:
         if (boxActive) {
             birdFlapState = BIRD_FLAP_STATE_STARTING;
-            birdFlapAmplitude = 0.0f;
+            birdFlapUpAmplitude = 0.0f;
+            birdFlapDownAmplitude = 0.0f;
             birdFlapPhase = 0.0f;
             birdFlapOutput = 0.0f;
             birdFlapFreqSmoothed = (float)cfg->minFreqX10 * 0.1f;
@@ -215,10 +218,16 @@ static void birdFlapUpdate(const int16_t inputValue)
             birdFlapState = BIRD_FLAP_STATE_STOPPING;
             break;
         }
-        // Ramp amplitude from 0 to max_amplitude over softStartMs
-        birdFlapAmplitude += (float)cfg->max_amplitude * dt / ((float)cfg->softStartMs * 0.001f);
-        if (birdFlapAmplitude >= (float)cfg->max_amplitude) {
-            birdFlapAmplitude = (float)cfg->max_amplitude;
+        // Ramp up/down amplitudes separately toward configured values
+        birdFlapUpAmplitude += (float)cfg->up_amplitude * dt / ((float)cfg->softStartMs * 0.001f);
+        if (birdFlapUpAmplitude >= (float)cfg->up_amplitude) {
+            birdFlapUpAmplitude = (float)cfg->up_amplitude;
+        }
+        birdFlapDownAmplitude += (float)cfg->down_amplitude * dt / ((float)cfg->softStartMs * 0.001f);
+        if (birdFlapDownAmplitude >= (float)cfg->down_amplitude) {
+            birdFlapDownAmplitude = (float)cfg->down_amplitude;
+        }
+        if (birdFlapUpAmplitude >= (float)cfg->up_amplitude && birdFlapDownAmplitude >= (float)cfg->down_amplitude) {
             birdFlapState = BIRD_FLAP_STATE_ACTIVE;
         }
         break;
@@ -226,17 +235,21 @@ static void birdFlapUpdate(const int16_t inputValue)
     case BIRD_FLAP_STATE_ACTIVE:
         if (!boxActive) {
             birdFlapState = BIRD_FLAP_STATE_STOPPING;
-            // Save current amplitude for soft stop ramp-down
             break;
         }
-        birdFlapAmplitude = (float)cfg->max_amplitude;
+        birdFlapUpAmplitude = (float)cfg->up_amplitude;
+        birdFlapDownAmplitude = (float)cfg->down_amplitude;
         break;
 
     case BIRD_FLAP_STATE_STOPPING:
-        // Ramp amplitude from current to 0 over softStopMs
-        birdFlapAmplitude -= (float)cfg->max_amplitude * dt / ((float)cfg->softStopMs * 0.001f);
-        if (birdFlapAmplitude <= 0.0f) {
-            birdFlapAmplitude = 0.0f;
+        // Ramp both amplitudes toward 0 over softStopMs at their own rates
+        birdFlapUpAmplitude -= (float)cfg->up_amplitude * dt / ((float)cfg->softStopMs * 0.001f);
+        birdFlapDownAmplitude -= (float)cfg->down_amplitude * dt / ((float)cfg->softStopMs * 0.001f);
+        if (birdFlapUpAmplitude <= 0.0f) birdFlapUpAmplitude = 0.0f;
+        if (birdFlapDownAmplitude <= 0.0f) birdFlapDownAmplitude = 0.0f;
+        if (birdFlapUpAmplitude <= 0.0f && birdFlapDownAmplitude <= 0.0f) {
+            birdFlapUpAmplitude = 0.0f;
+            birdFlapDownAmplitude = 0.0f;
             birdFlapState = BIRD_FLAP_STATE_OFF;
             birdFlapOutput = 0.0f;
             return;
@@ -301,8 +314,15 @@ static void birdFlapUpdate(const int16_t inputValue)
     // With warp: 0 → +1 → 0 → -1 → 0 (smooth, no discontinuities)
     float sineOut = sin_approx(warpedPhase * 2.0f * M_PIf);
 
-    // Scale to amplitude centered around 0
-    float target = sineOut * birdFlapAmplitude;
+    // === Scale to up/down amplitudes (asymmetric stroke) ===
+    float target;
+    if (sineOut >= 0.0f) {
+        // Upward stroke (sineOut from 0 to +1)
+        target = sineOut * birdFlapUpAmplitude;
+    } else {
+        // Downward stroke (sineOut from 0 to -1)
+        target = sineOut * birdFlapDownAmplitude;
+    }
 
     // === Slew Rate Limiting ===
     float maxDelta = birdFlapSlewInv * dt;
@@ -504,7 +524,8 @@ void servosInit(void)
     birdFlapState = BIRD_FLAP_STATE_OFF;
     birdFlapConfigured = false;
     birdFlapLastUs = 0;
-    birdFlapAmplitude = 0.0f;
+    birdFlapUpAmplitude = 0.0f;
+    birdFlapDownAmplitude = 0.0f;
     birdFlapOutput = 0.0f;
     birdFlapFreqSmoothed = 0.0f;
     birdFlapPhase = 0.0f;

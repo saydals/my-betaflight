@@ -2182,7 +2182,7 @@ static void cliServo(const char *cmdName, char *cmdline)
             arguments[MAX] < PWM_SERVO_MIN || arguments[MAX] > PWM_SERVO_MAX ||
             arguments[MIDDLE] < arguments[MIN] || arguments[MIDDLE] > arguments[MAX] ||
             arguments[MIN] > arguments[MAX] ||
-            arguments[RATE] < -100 || arguments[RATE] > 100 ||
+            arguments[RATE] < -125 || arguments[RATE] > 125 ||
             arguments[FORWARD] >= MAX_SUPPORTED_RC_CHANNEL_COUNT
         ) {
             cliShowArgumentRangeError(cmdName, NULL, 0, 0);
@@ -2343,7 +2343,7 @@ static void cliServoMix(const char *cmdName, char *cmdline)
         if (i >= 0 && i < MAX_SERVO_RULES &&
             args[TARGET] >= 0 && args[TARGET] < MAX_SUPPORTED_SERVOS &&
             args[INPUT] >= 0 && args[INPUT] < INPUT_SOURCE_COUNT &&
-            args[RATE] >= -100 && args[RATE] <= 100 &&
+            args[RATE] >= -125 && args[RATE] <= 125 &&
             args[SPEED] >= 0 && args[SPEED] <= MAX_SERVO_SPEED &&
             args[MIN] >= 0 && args[MIN] <= 100 &&
             args[MAX] >= 0 && args[MAX] <= 100 && args[MIN] < args[MAX] &&
