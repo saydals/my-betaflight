@@ -142,7 +142,6 @@ static float birdFlapUpAmplitude = 0.0f;
 static float birdFlapDownAmplitude = 0.0f;
 
 static float birdFlapFreqLpfCoef = 0.0f;
-static float birdFlapSlewInv = 0.0f;
 static timeUs_t birdFlapLastUs = 0;
 
 // ============================================================
@@ -172,13 +171,6 @@ static void birdFlapUpdateCoeffs(void)
     const float tau = (float)birdFlapConfig()->freqTauMs * 0.001f;
     birdFlapFreqLpfCoef = dt / (dt + tau);
 
-    // slew rate inverse: time to move 1 unit at given rate
-    // slewRate is in units/sec
-    if (birdFlapConfig()->slewRate > 0) {
-        birdFlapSlewInv = 1.0f / (float)birdFlapConfig()->slewRate;
-    } else {
-        birdFlapSlewInv = 0.0f;
-    }
 }
 
 // ============================================================
@@ -218,6 +210,13 @@ static void birdFlapUpdate(const int16_t inputValue)
             birdFlapState = BIRD_FLAP_STATE_STOPPING;
             break;
         }
+        // Guard against zero-division: if softStartMs <= 0, jump directly to full amplitude
+        if (cfg->softStartMs <= 0) {
+            birdFlapUpAmplitude = (float)cfg->up_amplitude;
+            birdFlapDownAmplitude = (float)cfg->down_amplitude;
+            birdFlapState = BIRD_FLAP_STATE_ACTIVE;
+            break;
+        }
         // Ramp up/down amplitudes separately toward configured values
         birdFlapUpAmplitude += (float)cfg->up_amplitude * dt / ((float)cfg->softStartMs * 0.001f);
         if (birdFlapUpAmplitude >= (float)cfg->up_amplitude) {
@@ -242,6 +241,14 @@ static void birdFlapUpdate(const int16_t inputValue)
         break;
 
     case BIRD_FLAP_STATE_STOPPING:
+        // Guard against zero-division: if softStopMs <= 0, jump to off immediately
+        if (cfg->softStopMs <= 0) {
+            birdFlapUpAmplitude = 0.0f;
+            birdFlapDownAmplitude = 0.0f;
+            birdFlapState = BIRD_FLAP_STATE_OFF;
+            birdFlapOutput = 0.0f;
+            return;
+        }
         // Ramp both amplitudes toward 0 over softStopMs at their own rates
         birdFlapUpAmplitude -= (float)cfg->up_amplitude * dt / ((float)cfg->softStopMs * 0.001f);
         birdFlapDownAmplitude -= (float)cfg->down_amplitude * dt / ((float)cfg->softStopMs * 0.001f);
@@ -325,8 +332,7 @@ static void birdFlapUpdate(const int16_t inputValue)
     }
 
     // === Slew Rate Limiting ===
-    float maxDelta = birdFlapSlewInv * dt;
-    if (maxDelta > 0.0f && dt > 0.0f) {
+    if (cfg->slewRate > 0 && dt > 0.0f) {
         // Convert slewRate (units/sec) to max change per dt
         float slewPerDt = (float)cfg->slewRate * dt;
         if (slewPerDt > 0.0f) {
@@ -521,8 +527,8 @@ void servosInit(void)
     servoConfigureOutput();
 
     // Initialize bird flap state
+    birdFlapScanMixer();
     birdFlapState = BIRD_FLAP_STATE_OFF;
-    birdFlapConfigured = false;
     birdFlapLastUs = 0;
     birdFlapUpAmplitude = 0.0f;
     birdFlapDownAmplitude = 0.0f;
@@ -737,7 +743,6 @@ void servoMixer(void)
 
     // === Bird Flap override ===
     // If bird flap is configured (mixer uses INPUT_BIRD_FLAP), run the kinematic model
-    birdFlapScanMixer();
     if (birdFlapConfigured) {
         birdFlapUpdate(input[INPUT_BIRD_FLAP]);
         // Override the servo output with the bird flap kinematic position
