@@ -52,6 +52,9 @@
 
 #include "sensors/battery.h"
 #include "sensors/gyro.h"
+#include "sensors/boardalignment.h"
+
+#include "io/beeper.h"
 
 #include "rc.h"
 
@@ -757,6 +760,90 @@ FAST_CODE_NOINLINE void updateRcCommands(void)
         rcCommand[PITCH] = rcCommandBuff.Y;
         if ((!FLIGHT_MODE(ANGLE_MODE)&&(!FLIGHT_MODE(HORIZON_MODE)) && (!FLIGHT_MODE(GPS_RESCUE_MODE)))) {
             rcCommand[YAW] = rcCommandBuff.Z;
+        }
+    }
+
+    // --- Board Alignment Tuning Mode ---
+    // BOARD ALIGN mode is intended to evaluate cross-axis coupling caused by board misalignment
+    // during a sustained roll maneuver. Preserving roll while forcing pitch and yaw to neutral
+    // provides a cleaner observation environment and makes alignment corrections easier to evaluate in flight.
+    {
+        static bool boardAlignModeActive = false;
+        static float boardAlignBaseline[3]; // [ROLL, PITCH, YAW]
+        static bool latchHi[3];
+        static bool latchLo[3];
+
+        if (IS_RC_MODE_ACTIVE(BOXBOARDALIGN)
+            && !FLIGHT_MODE(ANGLE_MODE)
+            && !FLIGHT_MODE(HORIZON_MODE))
+        {
+            // Capture baseline on mode entry (once)
+            if (!boardAlignModeActive) {
+                boardAlignModeActive = true;
+                boardAlignBaseline[ROLL]  = rcCommand[ROLL];
+                boardAlignBaseline[PITCH] = 0;
+                boardAlignBaseline[YAW]   = 0;
+                for (int i = 0; i < 3; i++) {
+                    latchHi[i] = false;
+                    latchLo[i] = false;
+                }
+            }
+
+            // Stick intercept: freeze flight commands (throttle untouched)
+            rcCommand[ROLL]  = boardAlignBaseline[ROLL];
+            rcCommand[PITCH] = 0;
+            rcCommand[YAW]   = 0;
+
+            // Adjust alignment values per axis
+            const int axes[3]   = { ROLL, PITCH, YAW };
+            const int limits[3] = { 10, 10, 15 }; // Roll/Pitch ±10°, Yaw ±15°
+
+            int32_t *alignDeg[3] = {
+                &boardAlignmentMutable()->rollDegrees,
+                &boardAlignmentMutable()->pitchDegrees,
+                &boardAlignmentMutable()->yawDegrees,
+            };
+
+            bool changed = false;
+
+            for (int i = 0; i < 3; i++) {
+                float raw = rcData[axes[i]];
+                int32_t oldVal = *alignDeg[i];
+                int32_t newVal = oldVal;
+
+                // Positive increment (stick > 1750)
+                if (!latchHi[i] && raw > 1750.0f) {
+                    newVal = constrain(oldVal + 1, -limits[i], limits[i]);
+                    latchHi[i] = true;
+                } else if (latchHi[i] && raw < 1600.0f) {
+                    latchHi[i] = false;
+                }
+
+                // Negative decrement (stick < 1250)
+                if (!latchLo[i] && raw < 1250.0f) {
+                    newVal = constrain(oldVal - 1, -limits[i], limits[i]);
+                    latchLo[i] = true;
+                } else if (latchLo[i] && raw > 1400.0f) {
+                    latchLo[i] = false;
+                }
+
+                // No-op guard: only update if value actually changed
+                if (newVal != oldVal) {
+                    *alignDeg[i] = newVal;
+                    changed = true;
+                }
+            }
+
+            // Recalculate board rotation matrix and beep on change
+            if (changed) {
+                updateBoardAlignmentMatrix(boardAlignment());
+                beeper(BEEPER_RX_SET);
+            }
+        } else {
+            // Mode deactivated: reset state (immediate release, no transition)
+            if (boardAlignModeActive) {
+                boardAlignModeActive = false;
+            }
         }
     }
 }

@@ -79,6 +79,23 @@ void initBoardAlignment(const boardAlignment_t *boardAlignment)
     buildRotationMatrix(&rotationAngles, &boardRotation);
 }
 
+void updateBoardAlignmentMatrix(const boardAlignment_t *boardAlignment)
+{
+    if (isBoardAlignmentStandard(boardAlignment)) {
+        standardBoardAlignment = true;
+        return;
+    }
+
+    standardBoardAlignment = false;
+
+    fp_angles_t rotationAngles;
+    rotationAngles.angles.roll  = degreesToRadians(boardAlignment->rollDegrees );
+    rotationAngles.angles.pitch = degreesToRadians(boardAlignment->pitchDegrees);
+    rotationAngles.angles.yaw   = degreesToRadians(boardAlignment->yawDegrees  );
+
+    buildRotationMatrix(&rotationAngles, &boardRotation);
+}
+
 static void alignBoard(float *vec)
 {
     applyMatrixRotation(vec, &boardRotation);
