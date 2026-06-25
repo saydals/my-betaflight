@@ -114,31 +114,109 @@ smix 3 1 1  50 0 0 100 0    # 좌측: 피치 50%
 
 ---
 
-## 4. GPS 레스큐 & 셔틀 랜딩
+## 4. GPS Rescue — 고정익 자율 복귀 시스템
 
-### 비행 단계 흐름
-**Ascend Alt** → **Flying Home** → **Point A** → **Shuttle/Descent** → **Final Descent** → **Landing**
+본 시스템은 Betaflight 고정익(Fixed-wing) 항공기의 비상 상황 시 자동으로 안전하게 홈 포인트로 복귀하고 착륙시키는 자율 비행 시스템입니다.  
+특히 **PID Profile 3를 레스큐 제어 파라미터로 전용 매핑**하여, 사용자가 CLI/Configurator GUI를 통해 실시간으로 응답성을 튜닝할 수 있는 것이 가장 큰 특징입니다.
 
-1. **Ascend Alt**: 설정 피치각 고정, 3초 직선 상승
-2. **Flying Home**: A포인트 타겟 복귀 순항
-3. **Point A**: `descentAlt` 짝수=이륙방향, 홀수=복귀방향에 A포인트 매핑
-4. **Descent**:
-   - 급하강 (shuttleCount=0): A포인트 도달 시 급강하
-   - 셔틀 (shuttleCount>0): A포인트~B포인트 왕복 셔틀 후 계단식 하강
-5. **Final Descent**: 홈 반경 30m 진입까지 속도/고도 추종
-6. **Landing**: 30m 이내에서 landingAlt+landingSpeed 조건 충족 시 활공 스로틀 3초 → 스로틀 1000 차단
+### 4.1 동작 로직: 12단계 상태 머신 (Phase Machine)
 
-### 핵심 파라미터 (Profile 3 전용)
-| 파라미터 | 역할 |
-|----------|------|
-| BankGain / BankPitchGain | 일반 선회 강도 |
-| SBankGain / SBankPitchGain | 셔틀 선회 강도 |
-| BankYawGain | 러더 기체용 ballooning 감쇠 |
-| ShuttleCount / ShuttleDistance | 셔틀 횟수/거리 |
-| AscendPitch / MidPitch / LandingPitch | 단계별 피치각 |
-| LandingSpeed / landingAlt | 착륙 속도/고도 |
-| AltholdGain | 고도 유지 P게인 |
-| descentAlt / HeadingYawGain | 하강고도 / 미세요게인 |
+GPS Rescue는 고도 확보부터 착륙까지 총 12단계의 상태 머신(State Machine)으로 정밀하게 제어됩니다.
+
+| Phase | 설명 |
+|-------|------|
+| **INITIALIZE** | 초기화 및 GPS 데이터 수신 대기 |
+| **ATTAIN_ALT** | 설정 피치각 고정, 직선 상승하여 목표 고도 확보 |
+| **FLY_HOME** | A포인트 타겟으로 복귀 순항 |
+| **POINT_A** | `descentAlt` 짝수=이륙방향, 홀수=복귀방향에 A포인트 매핑 |
+| **SHUTTLE** | A↔B포인트 왕복 셔틀 모드 (무한 반복 설정 가능, SHUTTLE_INFINITE) |
+| **SHUTTLE_DESCENT** | 셔틀 완료 후 하강 시작 |
+| **DESCENT** | 하강 단계 진입 |
+| **FINAL_DESCENT** | 홈 반경 30m 진입까지 속도/고도 추종 |
+| **LANDING** | 30m 이내에서 landingAlt+landingSpeed 조건 충족 시 활공 스로틀 3초 → 스로틀 1000 차단 |
+| **LANDED** | 착륙 완료 — 충격 감지(disarmOnImpact)로 지면 접촉 즉시 모터 정지 |
+| **RESCUE_FLYAWAY** | 비정상 상황 감지 시 안전 중단 (Flyaway 방지) |
+
+#### 상승 및 귀환
+INITIALIZE 후 **ATTAIN_ALT**(고도 확보) 단계를 거쳐 **FLY_HOME**(홈 귀환) 단계로 진입합니다.  
+설정 피치각으로 3초간 직선 상승 후 목표 고도에 도달하면 귀환을 시작합니다.
+
+#### 셔틀 모드 (특화 기능)
+단순히 귀환하는 것을 넘어, 특정 지점(A↔B)을 왕복하는 **SHUTTLE** 모드를 지원합니다.  
+`ShuttleCount` 값에 따라 왕복 횟수가 결정되며, 무한 반복(SHUTTLE_INFINITE) 설정이 가능하여 정찰이나 특정 구간 순찰 시 유용합니다.  
+셔틀 모드가 활성화되면 A포인트~B포인트를 CPA(Closest Point of Approach) 알고리즘으로 판정하여 전환점을 자동 생성합니다.
+
+#### 착륙 과정
+**DESCENT**(하강) 단계에서 홈 근처에 도달하면 **FINAL_DESCENT**로 전환됩니다.  
+**LANDING** 단계에서는 `landingAlt` + `landingSpeed` 조건이 충족되면 활공용 스로틀로 3초간 비행 후 스로틀 1000으로 차단합니다.  
+착륙 시 충격 감지 기능(disarmOnImpact)이 내장되어 있어 지면 접촉 즉시 모터를 정지시켜 기체를 보호합니다.
+
+### 4.2 핵심 제어 기술
+
+#### 스마트 헤딩(Smart Heading) & 뱅크턴
+기체의 현재 위치와 홈 방향의 오차에 따라 **요(Yaw) 제어**와 **조화선회(Bank-turn)** 모드를 지능적으로 전환합니다.
+
+- **오차가 작을 때**: 요(Yaw) PI 제어로 정밀하게 헤딩 보정
+- **오차가 클 때**: 뱅크를 활용한 선회로 기동성 확보
+
+선회 시 발생할 수 있는 고도 손실은 `BANK_BOOST_FLYHOME` 계수를 통해 쓰로틀을 보상합니다.
+
+#### PID Profile 3 전용 매핑
+레스큐 제어 파라미터가 **PID Profile 3의 P/I/D 변수를 전용으로 대체(Repurpose)**하여 사용합니다.
+
+| PID 축 | 할당 기능 |
+|--------|----------|
+| **Roll P** | 뱅크각(Bank Angle) 게인 |
+| **Roll I** | 뱅크 유지 및 피치 보정 적분 |
+| **Roll D** | 조화선회 요(Yaw) 제어 감쇠 |
+| **Pitch P** | 상승/착륙 시 피치 각도 게인 |
+| **Pitch I** | 고도 유지 적분 게인 (AltholdGain) |
+| **Pitch D** | 착륙 피치 각도 (LandingPitch) |
+| **Yaw P** | 셔틀 전용 뱅크 게인 (SBankGain) |
+| **Yaw I** | 요 헤딩 유지 적분 |
+| **Yaw D** | 하강 종료 고도 (descentAlt) |
+
+이를 통해 복잡한 코드 수정 없이도 사용자는 익숙한 PID 튜닝 방식으로 레스큐의 비행 스타일을 변경할 수 있습니다.
+
+### 4.3 안전 및 장애 대응 (Sanity Check)
+
+시스템은 비행 중 지속적으로 안전성을 진단합니다.
+
+- **Flyaway 방지**: 30초간 속도 부족이나 GPS 신호 상실 등 비정상 상황 발생 시 `RESCUE_FLYAWAY` 상태로 진입하여 레스큐를 안전하게 중단하거나 강제 착륙을 시도합니다.
+- **데이터 필터링**: GPS 속도 데이터는 **3차 LPF(Low Pass Filter)**를 적용하여 노이즈를 제거하고, 정밀한 속도 제어가 가능하도록 업샘플링합니다.
+- **속도 PI 제어**: `VELOCITY_KP`, `VELOCITY_KI`를 통해 목표 지상 속도에 도달하도록 정밀 제어합니다.
+
+### 4.4 핵심 파라미터 (Profile 3 전용)
+
+| 파라미터 | 역할 | PID Profile 3 매핑 |
+|----------|------|-------------------|
+| BankGain | 일반 선회 강도 | Roll P |
+| BankPitchGain | 일반 선회 피치 보정 | Roll I |
+| BankYawGain | 러더 기체용 ballooning 감쇠 | Roll D |
+| SBankGain | 셔틀 선회 강도 | Yaw P |
+| SBankPitchGain | 셔틀 선회 피치 보정 | Yaw I |
+| ShuttleCount | 셔틀 왕복 횟수 | - |
+| ShuttleDistance | 셔틀 왕복 거리 | - |
+| AscendPitch | 상승 피치각 | Pitch P |
+| MidPitch | 순항 피치각 | - |
+| LandingPitch | 착륙 피치각 | Pitch D |
+| LandingSpeed | 착륙 속도 | - |
+| landingAlt | 착륙 고도 | - |
+| AltholdGain | 고도 유지 P게인 | Pitch I |
+| descentAlt | 하강 종료 고도 | Yaw D |
+| HeadingYawGain | 미세요 게인 | Yaw I |
+
+### 4.5 튜닝 가이드
+
+| 증상 | 조정 항목 | 방법 |
+|------|----------|------|
+| 상승이 너무 빠르다면 | **Pitch P** (AscendPitch) | PID Profile 3 Pitch P 값을 낮춰 상승 피치각 감소 |
+| 상승이 너무 느리다면 | **Pitch P** (AscendPitch) | PID Profile 3 Pitch P 값을 높여 상승 피치각 증가 |
+| 착륙이 거칠다면 | **Pitch D** (LandingPitch) + **LandingSpeed** | LandingPitch와 LandingSpeed(d_min)를 낮춰 부드러운 하강 곡선 |
+| 선회 시 고도 손실이 크다면 | **BankGain** + **BankPitchGain** | Roll P/I 값을 높여 선회 강도 증가 |
+| 셔틀 선회가 불안정하다면 | **SBankGain** + **SBankPitchGain** | Yaw P/I 값 조정 |
+
+**OSD 확인**: OSD Element를 통해 현재 Phase(gpsRescueGetPhase)와 타겟까지의 거리, 셔틀 횟수 등을 실시간 모니터링할 수 있습니다.
 
 ### ⚠️ 중요 - PID Profile 3 경고
 레스큐 제어 파라미터가 **Profile 3 변수를 전용으로 대체(Repurpose)**하여 사용합니다.  
