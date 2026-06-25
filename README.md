@@ -291,7 +291,7 @@ get align_board_yaw
 
 ### 구현 상세
 
-- **모드 박스 ID**: `BOXBOARDALIGN` (permanentId = 55)
+- **모드 박스 ID**: `BOXUSER2` (permanentId = 41) — Configurator에서 "BOARD ALIGN"으로 표시됨
 - **동작 위치**: `src/main/fc/rc.c` — `updateRcCommands()` 함수 내
 - **보드 정렬 행렬 갱신**: `src/main/sensors/boardalignment.c` — `updateBoardAlignmentMatrix()`
 - **스틱 임계값**: HIGH > 1750, LOW < 1250 (래치 해제: HIGH < 1600, LOW > 1400)

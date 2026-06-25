@@ -88,7 +88,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] = {
 //    { .boxId = BOX3DONASWITCH, .boxName = "3D ON A SWITCH", .permanentId = 38 }, (removed)
     { .boxId = BOXVTXPITMODE, .boxName = "VTX PIT MODE", .permanentId = 39 },
     { .boxId = BOXUSER1, .boxName = "BIRD FLAP", .permanentId = 40 },
-    { .boxId = BOXUSER2, .boxName = "USER2", .permanentId = 41 },
+    { .boxId = BOXUSER2, .boxName = "BOARD ALIGN", .permanentId = 41 },
     { .boxId = BOXUSER3, .boxName = "USER3", .permanentId = 42 },
     { .boxId = BOXUSER4, .boxName = "USER4", .permanentId = 43 },
     { .boxId = BOXPIDAUDIO, .boxName = "PID AUDIO", .permanentId = 44 },
@@ -102,7 +102,6 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] = {
     { .boxId = BOXBEEPERMUTE, .boxName = "BEEPER MUTE", .permanentId = 52},
     { .boxId = BOXREADY, .boxName = "READY", .permanentId = 53},
     { .boxId = BOXLAPTIMERRESET, .boxName = "LAP TIMER RESET", .permanentId = 54},
-    { .boxId = BOXBOARDALIGN, .boxName = "BOARD ALIGN", .permanentId = 55},
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index
@@ -341,14 +340,13 @@ void initActiveBoxIds(void)
 #endif
 
     BME(BOXUSER1);
+    BME(BOXUSER2);
     BME(BOXSTICKCOMMANDDISABLE);
     BME(BOXREADY);
 
 #if defined(USE_GPS_LAP_TIMER)
     BME(BOXLAPTIMERRESET);
 #endif
-    BME(BOXBOARDALIGN);
-
 #undef BME
     // check that all enabled IDs are in boxes array (check may be skipped when using findBoxById() functions)
     for (boxId_e boxId = 0;  boxId < CHECKBOX_ITEM_COUNT; boxId++)

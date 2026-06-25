@@ -773,7 +773,7 @@ FAST_CODE_NOINLINE void updateRcCommands(void)
         static bool latchHi[3];
         static bool latchLo[3];
 
-        if (IS_RC_MODE_ACTIVE(BOXBOARDALIGN)
+        if (IS_RC_MODE_ACTIVE(BOXUSER2)
             && !FLIGHT_MODE(ANGLE_MODE)
             && !FLIGHT_MODE(HORIZON_MODE))
         {
