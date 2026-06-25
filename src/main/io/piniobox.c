@@ -49,8 +49,8 @@ void pinioBoxInit(const pinioBoxConfig_t *pinioBoxConfig)
     // Convert permanentId to boxId_e
 
     for (int i = 0; i < PINIO_COUNT; i++) {
-        // Skip BOXUSER1 (BIRD FLAP) - handled by servo system, not PINIO
-        if (pinioBoxConfig->permanentId[i] == 40) {
+        // Skip BOXUSER1 (BIRD FLAP) and BOXUSER2 (BOARD ALIGN) - reserved for internal functions
+        if (pinioBoxConfig->permanentId[i] == 40 || pinioBoxConfig->permanentId[i] == 41) {
             pinioBoxRuntimeConfig.boxId[i] = BOXID_NONE;
             continue;
         }

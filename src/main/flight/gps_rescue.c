@@ -84,7 +84,7 @@
 #define BANK_BOOST_FLYHOME                   4.0f  // 귀환 단계 뱅크 쓰로틀 보상 계수
 
 #define HEADING_LATCH_ON_DEG                 160.0f // 래치 활성화 임계값 (150~170도 권장)
-#define HEADING_LATCH_OFF_DEG                90.0f  // 래치 해제 임계값 (정렬 완료 간주)
+#define HEADING_LATCH_OFF_DEG                60.0f  // 래치 해제 임계값 (정렬 완료 간주)
 
 #define MAX_PITCH_SHUTTLE_DEG                15.0f // 셔틀 단계 최대 피치각
 #define MAX_PITCH_FLYHOME_DEG                20.0f // 귀환 단계 최대 피치각 

@@ -141,9 +141,9 @@ void serializeBoxNameFn(sbuf_t *dst, const box_t *box)
 {
 #if defined(USE_CUSTOM_BOX_NAMES)
     if (box->boxId == BOXUSER1 && strlen(modeActivationConfig()->box_user_1_name) > 0) {
-        sbufWriteString(dst, modeActivationConfig()->box_user_1_name);
+        // BOXUSER1 is fixed as "BIRD FLAP" — disabled custom name override
     } else if (box->boxId == BOXUSER2 && strlen(modeActivationConfig()->box_user_2_name) > 0) {
-        sbufWriteString(dst, modeActivationConfig()->box_user_2_name);
+        // BOXUSER2 is fixed as "BOARD ALIGN" — disabled custom name override
     } else if (box->boxId == BOXUSER3 && strlen(modeActivationConfig()->box_user_3_name) > 0) {
         sbufWriteString(dst, modeActivationConfig()->box_user_3_name);
     } else if (box->boxId == BOXUSER4 && strlen(modeActivationConfig()->box_user_4_name) > 0) {
@@ -311,8 +311,7 @@ void initActiveBoxIds(void)
             const box_t *box = findBoxByPermanentId(pinioBoxConfig()->permanentId[i]);
             if (box) {
                 switch(box->boxId) {
-                case BOXUSER1:
-                case BOXUSER2:
+                // BOXUSER1 is reserved for Bird Flap — not mapped to PINIO
                 case BOXUSER3:
                 case BOXUSER4:
                     BME(box->boxId);

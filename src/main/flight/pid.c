@@ -635,10 +635,10 @@ static float accelerationLimit(int axis, float currentPidSetpoint) {
  * Rodrigues I-term 회전
  * - 모든 각속도 구간에서 정확한 Rodrigues 공식 사용
  * - 부호 반전(-kx, -ky, -kz): 비행 실측으로 검증된 축 방향
- * - DAMP: anti_gravity_gain(0~250)으로 제어되는 약한 감쇠
- *     gain=  0 → DAMP = 0.999900 (최대 감쇠)
- *     gain= 80 → DAMP ≈ 0.999932 (기본값)
- *     gain=250 → DAMP = 1.000000 (감쇠 없음)
+ * - DAMP: horizon_level_strength(pid[PID_LEVEL].I, 0~100)으로 제어되는 회전 중 감쇠
+ *     horizon_level_strength=  0 → DAMP = 0.999900 (최대 감쇠)
+ *     horizon_level_strength= 50 → DAMP ≈ 0.999950 (중간 감쇠)
+ *     horizon_level_strength=100 → DAMP = 1.000000 (감쇠 없음, 순수 Rodrigues)
  */
 static void rotateVector(float v[XYZ_AXIS_COUNT], const float rotation[XYZ_AXIS_COUNT], const pidProfile_t *pidProfile)
 {
@@ -669,16 +669,18 @@ static void rotateVector(float v[XYZ_AXIS_COUNT], const float rotation[XYZ_AXIS_
         v[0] = vx * c + (ky * vz - kz * vy) * s + kx * dot * omc;
         v[1] = vy * c + (kz * vx - kx * vz) * s + ky * dot * omc;
         v[2] = vz * c + (kx * vy - ky * vx) * s + kz * dot * omc;
-    }
 
-    // DAMP: anti_gravity_gain(0~250) → 250일때 순수로드리게스로 기대함. 
-    // t = (250 - gain) * 0.004f  (0→1.0, 250→0.0) 
-    // DAMP = 1.0 - t * 1e-4f  (0→0.999900, 250→1.0)
-    const float t    = (250.0f - (float)pidProfile->anti_gravity_gain) * 0.004f;
-    const float DAMP = 1.0f - t * 1e-4f;
-    v[0] *= DAMP;
-    v[1] *= DAMP;
-    v[2] *= DAMP;
+        // DAMP: horizon_level_strength(pid[PID_LEVEL].I, 0~100)로 제어
+        // 회전 시에만 감쇠 적용 (회전 없을 때는 I-term 유지)
+        // gain=  0 → t=1.0 → DAMP=0.999900 (최대 감쇠, 기존 gain=0과 동일)
+        // gain=100 → t=0.0 → DAMP=1.000000 (감쇠 없음, 순수 Rodrigues)
+        const float gain = (float)pidProfile->pid[PID_LEVEL].I;
+        const float t    = (100.0f - gain) * 0.01f;
+        const float DAMP = 1.0f - t * 1e-4f;
+        v[0] *= DAMP;
+        v[1] *= DAMP;
+        v[2] *= DAMP;
+    }
 }
 
 STATIC_UNIT_TESTED void rotateItermAndAxisError(const pidProfile_t *pidProfile)
@@ -944,20 +946,16 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile,
   UNUSED(currentTimeUs);
 #endif
 
-  // Anti Gravity (DISABLED for compatibility)
-  /* 기능을 완전히 비활성화하기 위해 연산 로직을 주석 처리하고 0으로 고정합니다.
+  // Anti Gravity
   if (pidRuntime.antiGravityEnabled) {
     pidRuntime.antiGravityThrottleD *= pidRuntime.antiGravityGain;
-    // used later to increase pTerm
+    // used later to increase iTerm
     pidRuntime.itermAccelerator =
         pidRuntime.antiGravityThrottleD * ANTIGRAVITY_KI;
   } else {
     pidRuntime.antiGravityThrottleD = 0.0f;
     pidRuntime.itermAccelerator = 0.0f;
   }
-  */
-  pidRuntime.antiGravityThrottleD = 0.0f;
-  pidRuntime.itermAccelerator = 0.0f;
 
   // iTerm windup (attenuation of iTerm if motorMix range is large)
   float dynCi = 1.0;
@@ -1267,16 +1265,13 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile,
     }
 #endif
 
-    // Add P boost from antiGravity when sticks are close to zero (DISABLED for compatibility)
+    // Add P boost from antiGravity when sticks are close to zero
     if (axis != FD_YAW) {
-      /* 기능을 비활성화하기 위해 계산식을 주석 처리하고 1.0f로 고정합니다.
       float agSetpointAttenuator = fabsf(currentPidSetpoint) / 50.0f;
       agSetpointAttenuator = MAX(agSetpointAttenuator, 1.0f);
       const float antiGravityPBoost =
           1.0f + (pidRuntime.antiGravityThrottleD / agSetpointAttenuator) *
                      pidRuntime.antiGravityPGain;
-      */
-      const float antiGravityPBoost = 1.0f;
       pidData[axis].P *= antiGravityPBoost;
     }
 
