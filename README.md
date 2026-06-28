@@ -499,6 +499,42 @@ get align_board_yaw
 - **스틱 임계값**: HIGH > 1750, LOW < 1250 (래치 해제: HIGH < 1600, LOW > 1400)
 - **수정 파일**: `src/main/fc/rc.c`, `src/main/fc/rc_modes.h`, `src/main/msp/msp_box.c`, `src/main/sensors/boardalignment.c`, `src/main/sensors/boardalignment.h`
 
+
+## 8. Rescue Profile 3 PID 튜닝
+
+| 축         | Proportional      | Integral                 | D Max              | Derivative         | Feedforward            |
+| --------- | ----------------- | ------------------------ | ------------------ | ------------------ | ---------------------- |
+| **ROLL**  | BankGain     = 30 | BankPitchGain = 30       | BankYawGain = 30   | ShuttleCount = 1   | ShuttleDistance = 80   |
+| **PITCH** | AscendPitch = 100 | MidPitch           = 100 | LadnigPitch  = 100 | LandingSpeed = 4   | Alt Hold Gain     = 25 |
+| **YAW**   | S-Bank  Gain = 15 | SBankPitchGain = 15      | DescentAlt    = 30 | Landing Alt    = 2 | HeadingYawGain = 30    |
+
+Profile 3 의 PID로 레스큐 작동시 비행 특성을 조절합니다.
+
+목적지로 뱅크턴 비행을 할때 BankGain ( 적정범위10-30 )이 크면 뱅크각을 크게합니다.
+
+뱅크턴중 회전강도는 BankPitch (적정범위 10-30) 로 합니다.
+
+빠른 회전을 원하면 30-30 을 사용하며 셔틀 비행 중 거의 직진 왕복을 합니다.
+
+느린 회전을 원하면 10-10 을 사용하며 셔틀 비행 중 거의 원 운동을 합니다.
+
+만약 뱅크각이 작고 뱅크피치를 크게 사용할경우 10-30 처럼 쓰면 회전중 원치않는 상승을 유발
+
+만약 뱅크각이 크고 뱅크피치가 작을 경우 30-10 처럼 쓰면 회전중 원치않는 하강을 유발
+
+S-Bank  Gain은 S 가 셔틀을 의미하며 A B 두 지점을 왕복할때의 뱅크턴 형태를 의미합니다.
+
+위의 예시에서는 셔틀 모드에서는 거의 타원 운동이며 그 이외에서는 빠른 뱅크턴을 나타냅니다.
+
+BankYaw HeadingYaw는 Yaw가 있는 비행기에서 작동하며 느린  회전을 원할때 값을 낮춤.
+
+BankYaw HeadingYaw는  0-30 범위가 적당합니다.
+
+Alt Hold Gain 는 고도 유지를 위한 피치 사용 강도를 나타냅니다.
+
+---
+
+
 ---
 
 ## License
