@@ -68,6 +68,7 @@ void pgResetFn_servoConfig(servoConfig_t *servoConfig)
     servoConfig->tri_unarmed_servo = 1;
     servoConfig->servo_lowpass_freq = 0;
     servoConfig->channelForwardingStartChannel = AUX1;
+    servoConfig->ready_to_arm_wiggle_hz = 4;
 
 #ifdef SERVO1_PIN
     servoConfig->dev.ioTags[0] = IO_TAG(SERVO1_PIN);
@@ -143,6 +144,21 @@ static float birdFlapDownAmplitude = 0.0f;
 
 static float birdFlapFreqLpfCoef = 0.0f;
 static timeUs_t birdFlapLastUs = 0;
+
+// ============================================================
+// Ready-to-Arm Wiggle constants
+// ============================================================
+#define READY_TO_ARM_WIGGLE_DURATION_US   1000000   // 1초
+#define READY_TO_ARM_WIGGLE_INTERVAL_US   10000000  // 10초
+#define READY_TO_ARM_WIGGLE_BOOT_DELAY_MS 5000      // 5초
+#define READY_TO_ARM_WIGGLE_AMPLITUDE     250        // ±250
+
+// ============================================================
+// Ready-to-Arm Wiggle state variables
+// ============================================================
+static bool     wiggleActive     = false;
+static timeUs_t wiggleStartUs    = 0;
+static timeUs_t lastWiggleTimeUs = 0;
 
 // ============================================================
 // Bird Flap - Check if mixer uses INPUT_BIRD_FLAP
@@ -535,6 +551,11 @@ void servosInit(void)
     birdFlapOutput = 0.0f;
     birdFlapFreqSmoothed = 0.0f;
     birdFlapPhase = 0.0f;
+
+    // Initialize Ready-to-Arm Wiggle state
+    wiggleActive = false;
+    wiggleStartUs = 0;
+    lastWiggleTimeUs = 0;
 }
 
 void servoMixerLoadMix(int index)
@@ -660,6 +681,56 @@ void writeServos(void)
     }
 }
 
+// ============================================================
+// Ready-to-Arm Wiggle — Arming 준비 완료 시 에일러론 타면 주기적 알림
+// ============================================================
+static void updateReadyToArmWiggle(void)
+{
+    // OFF (0Hz)
+    if (servoConfig()->ready_to_arm_wiggle_hz == 0) return;
+
+    // 부팅 유예
+    if (millis() < READY_TO_ARM_WIGGLE_BOOT_DELAY_MS) return;
+
+    // Armed → 즉시 중단
+    if (ARMING_FLAG(ARMED)) {
+        wiggleActive = false;
+        return;
+    }
+
+    // Arming 불가 → 중단 + 타이머 리셋
+    if (isArmingDisabled()) {
+        wiggleActive = false;
+        lastWiggleTimeUs = 0;
+        return;
+    }
+
+    // Arming 가능 → 윙글 활성화 (최초 or 10초 주기)
+    timeUs_t now = micros();
+    if (!wiggleActive) {
+        if (lastWiggleTimeUs == 0 ||
+            cmpTimeUs(now, lastWiggleTimeUs) >= READY_TO_ARM_WIGGLE_INTERVAL_US) {
+            wiggleActive = true;
+            wiggleStartUs = now;
+            lastWiggleTimeUs = now;
+        }
+    }
+
+    // 1초 지속시간 종료
+    if (wiggleActive && cmpTimeUs(now, wiggleStartUs) > READY_TO_ARM_WIGGLE_DURATION_US) {
+        wiggleActive = false;
+    }
+}
+
+static int16_t getReadyToArmWiggleOffset(void)
+{
+    if (!wiggleActive) return 0;
+
+    float t = (float)cmpTimeUs(micros(), wiggleStartUs) * 1e-6f;
+    return (int16_t)(sin_approx(2.0f * M_PIf * (float)servoConfig()->ready_to_arm_wiggle_hz * t)
+                     * READY_TO_ARM_WIGGLE_AMPLITUDE);
+}
+
 void servoMixer(void)
 {
     int16_t input[INPUT_SOURCE_COUNT]; // Range [-500:+500]
@@ -711,6 +782,10 @@ void servoMixer(void)
     } else {
         input[INPUT_BIRD_FLAP] = 0;
     }
+
+    // ★ Ready-to-Arm Wiggle — 서보 믹서 루프 진입 전에 Roll 입력에 오프셋 주입
+    updateReadyToArmWiggle();
+    input[INPUT_STABILIZED_ROLL] += getReadyToArmWiggleOffset();
 
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         servo[i] = 0;
