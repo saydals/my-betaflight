@@ -474,6 +474,51 @@ int16_t determineServoMiddleOrForwardFromChannel(servoIndex_e servoIndex)
     return servoParams(servoIndex)->middle;
 }
 
+/**
+ * 서보 출력을 사용자 설정 min/max/middle에 맞게 비례 스케일링
+ * - 기본 설정(1000-1500-2000)과 다를 때만 적용
+ * - AUX Channel Forwarding 활성화 시 이중 스케일링 방지 (constrain만 수행)
+ * - uint8_t 캐스팅으로 부호 확장(Sign Extension) 버그 방지
+ */
+static void scaleServoOutput(int i)
+{
+    int16_t min = servoParams(i)->min;
+    int16_t max = servoParams(i)->max;
+    int16_t middle = servoParams(i)->middle;
+
+    const int16_t DEFAULT_HALF_RANGE = 500;
+
+    int16_t rangeDown = middle - min;
+    int16_t rangeUp = max - middle;
+
+    // 기본 설정과 다를 때만 스케일링
+    if (rangeDown == DEFAULT_HALF_RANGE && rangeUp == DEFAULT_HALF_RANGE) {
+        servo[i] = constrain(servo[i], min, max);
+        return;
+    }
+
+    // uint8_t 캐스팅으로 부호 확장 버그 방지
+    const uint8_t channelToForwardFrom = servoParams(i)->forwardFromChannel;
+    if (channelToForwardFrom != CHANNEL_FORWARDING_DISABLED) {
+        servo[i] = constrain(servo[i], min, max);
+        return;
+    }
+
+    int16_t deviation = servo[i] - middle;
+    int32_t scaled = middle;
+
+    if (deviation < 0) {
+        scaled += (int32_t)deviation * rangeDown / DEFAULT_HALF_RANGE;
+    } else if (deviation > 0) {
+        scaled += (int32_t)deviation * rangeUp / DEFAULT_HALF_RANGE;
+    } else {
+        servo[i] = constrain(servo[i], min, max);
+        return;
+    }
+
+    servo[i] = constrain((int16_t)scaled, min, max);
+}
+
 int servoDirection(int servoIndex, int inputSource)
 {
     // determine the direction (reversed or not) from the direction bitfield of the servo
@@ -783,9 +828,14 @@ void servoMixer(void)
         input[INPUT_BIRD_FLAP] = 0;
     }
 
-    // ★ Ready-to-Arm Wiggle — 서보 믹서 루프 진입 전에 Roll 입력에 오프셋 주입
+    // ★ Ready-to-Arm Wiggle
     updateReadyToArmWiggle();
-    input[INPUT_STABILIZED_ROLL] += getReadyToArmWiggleOffset();
+    if (birdFlapConfigured) {
+        // Bird Flap 사용 시: Roll이 아닌 Bird Flap 서보에 오프셋을 나중에 추가
+    } else {
+        // Bird Flap 미사용: 기존대로 에일러론(Flapperon) Roll 입력에 오프셋 주입
+        input[INPUT_STABILIZED_ROLL] += getReadyToArmWiggleOffset();
+    }
 
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         servo[i] = 0;
@@ -824,7 +874,8 @@ void servoMixer(void)
         // birdFlapOutput is centered around 0. The middle offset is added
         // later by determineServoMiddleOrForwardFromChannel() at line 704.
         // Only set the offset here to avoid double-adding the middle value.
-        servo[birdFlapServoIndex] = (int16_t)(birdFlapOutput);
+        // Wiggle offset is applied to bird flap servo (not aileron).
+        servo[birdFlapServoIndex] = (int16_t)(birdFlapOutput + getReadyToArmWiggleOffset());
     }
 
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
@@ -881,9 +932,9 @@ static void servoTable(void)
         }
     }
 
-    // constrain servos
+    // Scale and constrain servos — asymmetric support with AUX forwarding protection
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-        servo[i] = constrain(servo[i], servoParams(i)->min, servoParams(i)->max); // limit the values
+        scaleServoOutput(i);
     }
 }
 

@@ -200,8 +200,8 @@ static const adjustmentConfig_t defaultAdjustmentConfigs[ADJUSTMENT_FUNCTION_COU
         .data = { .step = 1 }
     }, {
         .adjustmentFunction = ADJUSTMENT_HORIZON_STRENGTH,
-        .mode = ADJUSTMENT_MODE_SELECT,
-        .data = { .switchPositions = 100 }
+        .mode = ADJUSTMENT_MODE_STEP,
+        .data = { .step = 2 }
     }, {
         .adjustmentFunction = ADJUSTMENT_PID_AUDIO,
         .mode = ADJUSTMENT_MODE_SELECT,
@@ -425,6 +425,11 @@ static int applyStepAdjustment(controlRateConfig_t *controlRateConfig, uint8_t a
         blackboxLogInflightAdjustmentEvent(ADJUSTMENT_FEEDFORWARD_TRANSITION, newValue);
         break;
 #endif
+    case ADJUSTMENT_HORIZON_STRENGTH:
+        newValue = constrain((int)currentPidProfile->pid[PID_LEVEL].I + delta, 0, 100);
+        currentPidProfile->pid[PID_LEVEL].I = newValue;
+        blackboxLogInflightAdjustmentEvent(ADJUSTMENT_HORIZON_STRENGTH, newValue);
+        break;
     default:
         newValue = -1;
         break;
@@ -588,6 +593,11 @@ static int applyAbsoluteAdjustment(controlRateConfig_t *controlRateConfig, adjus
         blackboxLogInflightAdjustmentEvent(ADJUSTMENT_FEEDFORWARD_TRANSITION, newValue);
         break;
 #endif
+    case ADJUSTMENT_HORIZON_STRENGTH:
+        newValue = constrain(value, 0, 100);
+        currentPidProfile->pid[PID_LEVEL].I = newValue;
+        blackboxLogInflightAdjustmentEvent(ADJUSTMENT_HORIZON_STRENGTH, newValue);
+        break;
     default:
         newValue = -1;
         break;
@@ -607,16 +617,6 @@ static uint8_t applySelectAdjustment(adjustmentFunction_e adjustmentFunction, ui
             blackboxLogInflightAdjustmentEvent(ADJUSTMENT_RATE_PROFILE, position);
 
             beeps = position + 1;
-        }
-        break;
-    case ADJUSTMENT_HORIZON_STRENGTH:
-        {
-            uint8_t newValue = constrain(position, 0, 100); // horizon_level_strength 0-100
-            if (currentPidProfile->pid[PID_LEVEL].I != newValue) {
-                beeps = ((newValue - currentPidProfile->pid[PID_LEVEL].I) / 8) + 1;
-                currentPidProfile->pid[PID_LEVEL].I = newValue;
-                blackboxLogInflightAdjustmentEvent(ADJUSTMENT_HORIZON_STRENGTH, position);
-            }
         }
         break;
     case ADJUSTMENT_PID_AUDIO:
