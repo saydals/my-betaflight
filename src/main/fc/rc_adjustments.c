@@ -65,7 +65,7 @@
 
 #define ADJUSTMENT_RANGE_COUNT_INVALID -1
 
-PG_REGISTER_ARRAY(adjustmentRange_t, MAX_ADJUSTMENT_RANGE_COUNT, adjustmentRanges, PG_ADJUSTMENT_RANGE_CONFIG, 2);
+PG_REGISTER_ARRAY(adjustmentRange_t, MAX_ADJUSTMENT_RANGE_COUNT, adjustmentRanges, PG_ADJUSTMENT_RANGE_CONFIG, 3);
 
 uint8_t pidAudioPositionToModeMap[7] = {
     // on a pot with a center detent, it's easy to have center area for off/default, then three positions to the left and three to the right.
@@ -226,6 +226,10 @@ static const adjustmentConfig_t defaultAdjustmentConfigs[ADJUSTMENT_FUNCTION_COU
         .adjustmentFunction = ADJUSTMENT_LED_PROFILE,
         .mode = ADJUSTMENT_MODE_SELECT,
         .data = { .switchPositions = 3 }
+    }, {
+        .adjustmentFunction = ADJUSTMENT_PID_PROFILE,
+        .mode = ADJUSTMENT_MODE_SELECT,
+        .data = { .switchPositions = PID_PROFILE_COUNT }
     }
 };
 
@@ -264,6 +268,8 @@ static const char * const adjustmentLabels[] = {
     "ROLL F",
     "YAW F",
     "OSD PROFILE",
+    "LED PROFILE",
+    "PID PROFILE",
 };
 
 static int adjustmentRangeNameIndex = 0;
@@ -643,6 +649,12 @@ static uint8_t applySelectAdjustment(adjustmentFunction_e adjustmentFunction, ui
         }
 #endif
         break;
+    case ADJUSTMENT_PID_PROFILE:
+        if (getCurrentPidProfileIndex() != position) {
+            changePidProfile(position);
+            blackboxLogInflightAdjustmentEvent(ADJUSTMENT_PID_PROFILE, position);
+        }
+        break;
 
     default:
         break;
@@ -698,6 +710,7 @@ static void updateOsdAdjustmentData(int newValue, adjustmentFunction_e adjustmen
 #ifdef USE_OSD_PROFILES
         && adjustmentFunction != ADJUSTMENT_OSD_PROFILE
 #endif
+        && adjustmentFunction != ADJUSTMENT_PID_PROFILE   // PID profile already has an OSD element (OSD_PIDRATE_PROFILE)
         ) {
         adjustmentRangeNameIndex = adjustmentFunction;
         adjustmentRangeValue = newValue;
